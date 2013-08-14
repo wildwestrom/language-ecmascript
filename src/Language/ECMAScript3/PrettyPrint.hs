@@ -47,8 +47,8 @@ instance Pretty (Statement a) where
       braces (nest 2 (vcat (map prettyPrint cases)))
     WhileStmt _ test body -> text "while" <+> parens (ppExpression True test)
                              $$  prettyPrint body
-    ReturnStmt _ Nothing -> text "return"
-    ReturnStmt _ (Just e) -> text "return" <+> ppExpression True e
+    ReturnStmt _ Nothing -> text "return" <> semi
+    ReturnStmt _ (Just e) -> text "return" <+> ppExpression True e <> semi
     DoWhileStmt _ s e -> 
       text "do" $$ 
       (prettyPrint s <+> text "while" <+> parens (ppExpression True e)
@@ -75,8 +75,7 @@ instance Pretty (Statement a) where
               Just stmt -> text "finally" <> inBlock stmt
             ppCatch = case mcatch of
               Nothing -> empty
-              Just (CatchClause _ id s) -> 
-                text "catch" <+> (parens.prettyPrint) id <+> inBlock s
+              Just cc -> prettyPrint cc
     ThrowStmt _ e -> text "throw" <+> ppExpression True e <> semi
     WithStmt _ e s -> text "with" <+> parens (ppExpression True e)
                       $$ prettyPrint s
@@ -87,6 +86,10 @@ instance Pretty (Statement a) where
       text "function" <+> prettyPrint name <> 
       parens (cat $ punctuate comma (map prettyPrint args)) $$ 
       asBlock body
+
+instance Pretty (CatchClause a) where
+  prettyPrint (CatchClause _ id s) =
+    text "catch" <+> (parens.prettyPrint) id <+> inBlock s
 
 instance Pretty (ForInit a) where 
   prettyPrint t = case t of
