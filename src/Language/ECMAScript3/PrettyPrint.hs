@@ -106,7 +106,7 @@ instance Pretty (ForInInit a) where
 instance Pretty (LValue a) where 
   prettyPrint lv = case lv of
     LVar _ x -> text x
-    LDot _ e x -> ppMemberExpression e <> text "." <> text x
+    LDot _ e x -> ppObjInDotRef e ppMemberExpression <> text "." <> text x
     LBracket _ e1 e2 -> ppMemberExpression e1 <> 
                         brackets (ppExpression True e2)
 
@@ -276,7 +276,7 @@ ppMemberExpression e = case e of
     text "function" <+> maybe name prettyPrint <+>
     parens (cat $ punctuate comma (map prettyPrint params)) $$ 
     asBlock body
-  DotRef _ obj id -> ppMemberExpression obj <> text "." <> prettyPrint id
+  DotRef _ obj id -> ppObjInDotRef obj ppMemberExpression <> text "." <> prettyPrint id
   BracketRef _ obj key -> 
     ppMemberExpression obj <> brackets (ppExpression True key)  
   NewExpr _ ctor args -> 
@@ -286,11 +286,15 @@ ppMemberExpression e = case e of
 ppCallExpression :: Expression a -> Doc
 ppCallExpression e = case e of
   CallExpr _ f args -> ppCallExpression f <> ppArguments args
-  DotRef _ obj id -> ppCallExpression obj <> text "." <> prettyPrint id
+  DotRef _ obj id -> ppObjInDotRef obj ppCallExpression <> text "." <> prettyPrint id
   BracketRef _ obj key -> ppCallExpression obj
                           <> brackets (ppExpression True key)
-  _ -> ppMemberExpression e  
-    
+  _ -> ppMemberExpression e
+
+ppObjInDotRef :: Expression a -> (Expression a -> Doc) -> Doc
+ppObjInDotRef i@(IntLit _ _) _ = parens (ppPrimaryExpression i)
+ppObjInDotRef e p              = p e
+
 ppArguments :: [Expression a] -> Doc
 ppArguments es = 
   parens $ cat $ punctuate comma (map (ppAssignmentExpression True) es)

@@ -2,7 +2,9 @@ Version change log.
 
 =0.15.1=
 Added semicolons after the "return" statement in the pretty printer to
-avoid certain class of syntax error when printed code is parsed again.
+avoid certain class of syntax error when printed code is parsed
+again. Changed the pretty-printer to put the IntLit in parenthesis if it's
+found on the left-side of the '.' (field access) operator.
 
 =0.15=
 Bug fixes in the pretty-printer, the parser and the QuickCheck arbitrary
