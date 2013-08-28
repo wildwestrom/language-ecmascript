@@ -1,5 +1,9 @@
 Version change log.
 
+=0.15.2=
+Fixed an error in the .cabal file that prevented some of the test modules
+to be packaged.
+
 =0.15.1=
 Added semicolons after the "return" statement in the pretty printer to
 avoid certain class of syntax error when printed code is parsed
