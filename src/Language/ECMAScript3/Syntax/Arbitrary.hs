@@ -9,8 +9,8 @@
 module Language.ECMAScript3.Syntax.Arbitrary where
 
 import Language.ECMAScript3.Syntax
-import Test.QuickCheck hiding (Prop)
-import Test.QuickCheck.Arbitrary
+import Test.QuickCheck hiding (Prop, Arbitrary (..))
+import qualified Test.QuickCheck.Arbitrary as Arb
 import Test.QuickCheck.Property (forAllShrink)
 import Data.Map hiding (map,null,filter,foldr)
 import Data.List (nub,delete)
@@ -23,22 +23,26 @@ import Control.Monad
 import Control.Monad.State
 import Data.Maybe (maybeToList)
 
--- | The generator state: a stack of labels enclosing the current context
-data ArbState = ArbState [String]
+-- | The generator state: a stack statements enclosing the current
+-- context
+data ArbState = ArbState [Enclosing]
+
+data Enclosing = Enclosing EnclType [String]
+data EnclType  = Other | Iter | Switch
 
 type SGen s a = StateT s Gen a
 
 -- | A stateful arbitrary class
 class StatefulArbitrary s a where
-  sarbitrary :: StateT s Gen a
-  sshrink :: a -> State s [a]
-  sshrink a = return [a]
+  arbitrary :: SGen s a
+  shrink :: a -> State s [a]
+  shrink a = return [a]
 
 toArbitrary :: StatefulArbitrary s a => s -> Gen a
-toArbitrary s = evalStateT sarbitrary s
+toArbitrary s = evalStateT arbitrary s
 
 toShrink :: StatefulArbitrary s a => s -> (a -> [a])
-toShrink s = \a -> evalState (sshrink a) s
+toShrink s = \a -> evalState (shrink a) s
 
 soneof :: [SGen s a] -> SGen s a
 soneof [] = error "soneof called with an empty list"
@@ -46,71 +50,72 @@ soneof sgens = do i <- lift $ choose (0, length sgens - 1)
                   sgens !! i
 
 instance StatefulArbitrary ArbState AssignOp where
-  sarbitrary = 
+  arbitrary = 
     lift $ elements
              [OpAssign, OpAssignAdd, OpAssignSub, OpAssignMul, OpAssignDiv, 
               OpAssignMod, OpAssignLShift, OpAssignSpRShift, OpAssignZfRShift,
               OpAssignBAnd, OpAssignBXor, OpAssignBOr]
 
 instance StatefulArbitrary ArbState InfixOp where
-  sarbitrary = 
+  arbitrary = 
     lift $ elements [OpLT, OpLEq, OpGT, OpGEq , OpIn , OpInstanceof, OpEq, OpNEq, 
                      OpStrictEq, OpStrictNEq, OpLAnd, OpLOr,
                      OpMul, OpDiv, OpMod , OpSub, OpLShift, OpSpRShift,
                      OpZfRShift, OpBAnd, OpBXor, OpBOr, OpAdd]
   
 instance StatefulArbitrary ArbState (UnaryAssignOp) where
-  sarbitrary = 
+  arbitrary = 
     lift $ elements [PrefixInc, PrefixDec, PostfixInc, PostfixDec]
   
 instance StatefulArbitrary ArbState PrefixOp where
-  sarbitrary = 
+  arbitrary = 
     lift $ elements [PrefixLNot, PrefixBNot, PrefixPlus, PrefixMinus, 
                      PrefixTypeof, PrefixVoid, PrefixDelete]
 
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Id a) where
-  sarbitrary = liftM2 Id sarbitrary identifier
-  sshrink (Id a s) = do ns <- sshrink s
-                        na <- sshrink a
-                        return [Id na' ns' | ns' <- ns, na' <- na]
+  arbitrary = liftM2 Id arbitrary identifier
+  shrink (Id a s) = do ns <- shrink s
+                       na <- shrink a
+                       return [Id na' ns' | ns' <- ns, na' <- na]
 
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState [a] where
-  sarbitrary = lift arbitrary
-  sshrink = return . shrink
+instance (StatefulArbitrary ArbState a) => StatefulArbitrary ArbState [a] where
+  arbitrary = lift $ sized $ \n -> do k <- lift choose (0, n)
+                                      sequence [ arbitrary | _ <- [1..k]]
+  shrink = return . Arb.shrink
 
 instance StatefulArbitrary ArbState Char where
-  sarbitrary = lift arbitrary
-  sshrink = return . shrink
+  arbitrary = lift Arb.arbitrary
+  shrink = return . Arb.shrink
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (CaseClause a) where
-  sarbitrary = soneof [caseclause, casedefault]
-    where caseclause = liftM3 CaseClause sarbitrary sarbitrary sarbitrary
-          casedefault = liftM2 CaseDefault sarbitrary sarbitrary
-  sshrink (CaseClause a expr stmts) = 
-    [CaseClause na ne ns | na <- sshrink a, ne <- sshrink expr, ns <- sshrink stmts]
-  sshrink (CaseDefault a stmts) = 
-    [CaseDefault na ns | na <- sshrink a, ns <- sshrink stmts]
+  arbitrary = soneof [caseclause, casedefault]
+    where caseclause = liftM3 CaseClause arbitrary arbitrary arbitrary
+          casedefault = liftM2 CaseDefault arbitrary arbitrary
+  shrink (CaseClause a expr stmts) = 
+    [CaseClause na ne ns | na <- shrink a, ne <- shrink expr, ns <- shrink stmts]
+  shrink (CaseDefault a stmts) = 
+    [CaseDefault na ns | na <- shrink a, ns <- shrink stmts]
                          
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Prop a) where
-  sarbitrary = soneof [liftM2 PropId sarbitrary sarbitrary,
-                     liftM2 PropString sarbitrary nonEmptyString,
-                     liftM2 PropNum sarbitrary nonNegative
-                    ]
-  sshrink (PropId a id) = [PropId na nid | nid <- sshrink id, na <- sshrink a] 
-  sshrink (PropString a s) = [PropString na ns | ns <- sshrink s, na <- sshrink a] 
-  sshrink (PropNum a i) = [PropNum na ni | ni <- sshrink i, na <- sshrink a] 
+  arbitrary = soneof [liftM2 PropId arbitrary arbitrary
+                     ,liftM2 PropString arbitrary nonEmptyString
+                     ,liftM2 PropNum arbitrary nonNegative
+                     ]
+  shrink (PropId a id) = [PropId na nid | nid <- shrink id, na <- shrink a] 
+  shrink (PropString a s) = [PropString na ns | ns <- shrink s, na <- shrink a] 
+  shrink (PropNum a i) = [PropNum na ni | ni <- shrink i, na <- shrink a] 
   
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (LValue a) where  
-  sarbitrary = soneof [liftM2 LVar sarbitrary identifier,
-                     liftM3 LDot sarbitrary sarbitrary identifier,
-                     liftM3 LBracket sarbitrary sarbitrary sarbitrary]
-  sshrink (LVar a s) = [LVar na ns | ns <- sshrink s, na <- sshrink a]
-  sshrink (LDot a e s) = [LDot na ne ns | ne <- sshrink e, ns <-shrink s, na <-shrink a]
-  sshrink (LBracket a e1 e2) = [LBracket na ne1 ne2 | ne1 <- sshrink e1, ne2 <-shrink e2, na <- sshrink a]
+  arbitrary = soneof [liftM2 LVar arbitrary identifier,
+                     liftM3 LDot arbitrary arbitrary identifier,
+                     liftM3 LBracket arbitrary arbitrary arbitrary]
+  shrink (LVar a s) = [LVar na ns | ns <- shrink s, na <- shrink a]
+  shrink (LDot a e s) = [LDot na ne ns | ne <- shrink e, ns <-shrink s, na <-shrink a]
+  shrink (LBracket a e1 e2) = [LBracket na ne1 ne2 | ne1 <- shrink e1, ne2 <-shrink e2, na <- shrink a]
   
-csshrink :: StatefulArbitrary ArbState a => [a] -> State s [a]
-csshrink = (liftM concat) . sshrink
+cshrink :: StatefulArbitrary ArbState a => [a] -> State s [a]
+cshrink = (liftM concat) . shrink
 
 identifier :: StateT s Gen String
 identifier = lift $ sized sizedIdent
@@ -140,10 +145,10 @@ recursive :: Gen a -> Gen a
 recursive g = sized (\n -> resize (n-1) g)
 
 rarbitrary :: StatefulArbitrary ArbState a => Gen a
-rarbitrary = recursive sarbitrary
+rarbitrary = recursive arbitrary
 
 rrarbitrary :: StatefulArbitrary ArbState a => Gen a
-rrarbitrary = recursive $ recursive sarbitrary
+rrarbitrary = recursive $ recursive arbitrary
 
 atLeastOfSize :: StatefulArbitrary ArbState a => Int -> Gen a -> Gen a
 atLeastOfSize l gen = sized $ \s -> if s < l then resize l gen else gen
@@ -160,164 +165,164 @@ nonEmptyString = sized $ \s -> if s < 1 then stringOfLength 1 else stringOfLengt
 regexpBody = nonEmptyString
 
 nonNegative :: (StatefulArbitrary ArbState a, Num a) => Gen a
-nonNegative = liftM abs sarbitrary
+nonNegative = liftM abs arbitrary
 
 stringOfLength :: Int -> Gen String
 stringOfLength 0 = return ""
-stringOfLength n = do c <- sarbitrary
+stringOfLength n = do c <- arbitrary
                       rs <- stringOfLength (n-1)
                       return (c:rs)
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Expression a) where
-  sarbitrary = 
-    sGen [(0, liftM  ThisRef sarbitrary),
-          (0, liftM  NullLit sarbitrary),
-          (0, liftM2 StringLit sarbitrary sarbitrary),
-          (0, liftM2 NumLit sarbitrary nonNegative),
-          (0, liftM2 IntLit sarbitrary nonNegative),
-          (0, liftM2 BoolLit sarbitrary sarbitrary),
-          (0, liftM4 RegexpLit sarbitrary regexpBody sarbitrary sarbitrary),
-          (1, liftM2 ArrayLit sarbitrary rarbitrary),
-          (1, liftM2 ObjectLit sarbitrary rarbitrary),
-          (0, liftM2 VarRef sarbitrary sarbitrary),
-          (1, liftM3 DotRef sarbitrary rarbitrary sarbitrary),
-          (2, liftM3 BracketRef sarbitrary rarbitrary rarbitrary),
-          (3, liftM3 NewExpr sarbitrary rarbitrary rrarbitrary),
-          (1, liftM3 PrefixExpr sarbitrary sarbitrary rarbitrary),
-          (2, liftM3 UnaryAssignExpr sarbitrary sarbitrary rarbitrary),
-          (2, liftM4 InfixExpr sarbitrary sarbitrary rarbitrary rarbitrary),
-          (3, liftM4 CondExpr sarbitrary rarbitrary rarbitrary rarbitrary),
-          (3, liftM4 AssignExpr sarbitrary rarbitrary rarbitrary rarbitrary),
-          (3, liftM2 ListExpr sarbitrary (recursive (listOfN 2 sarbitrary))),
-          (3, liftM3 CallExpr sarbitrary rarbitrary rrarbitrary),
-          (1, liftM4 FuncExpr sarbitrary sarbitrary sarbitrary rarbitrary)]
+  arbitrary = 
+    sGen [(0, liftM  ThisRef arbitrary),
+          (0, liftM  NullLit arbitrary),
+          (0, liftM2 StringLit arbitrary arbitrary),
+          (0, liftM2 NumLit arbitrary nonNegative),
+          (0, liftM2 IntLit arbitrary nonNegative),
+          (0, liftM2 BoolLit arbitrary arbitrary),
+          (0, liftM4 RegexpLit arbitrary regexpBody arbitrary arbitrary),
+          (1, liftM2 ArrayLit arbitrary rarbitrary),
+          (1, liftM2 ObjectLit arbitrary rarbitrary),
+          (0, liftM2 VarRef arbitrary arbitrary),
+          (1, liftM3 DotRef arbitrary rarbitrary arbitrary),
+          (2, liftM3 BracketRef arbitrary rarbitrary rarbitrary),
+          (3, liftM3 NewExpr arbitrary rarbitrary rrarbitrary),
+          (1, liftM3 PrefixExpr arbitrary arbitrary rarbitrary),
+          (2, liftM3 UnaryAssignExpr arbitrary arbitrary rarbitrary),
+          (2, liftM4 InfixExpr arbitrary arbitrary rarbitrary rarbitrary),
+          (3, liftM4 CondExpr arbitrary rarbitrary rarbitrary rarbitrary),
+          (3, liftM4 AssignExpr arbitrary rarbitrary rarbitrary rarbitrary),
+          (3, liftM2 ListExpr arbitrary (recursive (listOfN 2 arbitrary))),
+          (3, liftM3 CallExpr arbitrary rarbitrary rrarbitrary),
+          (1, liftM4 FuncExpr arbitrary arbitrary arbitrary rarbitrary)]
     
-  sshrink (StringLit a s) = [StringLit na ns | na <- sshrink a, ns <- sshrink s]
-  sshrink (RegexpLit a s b1 b2) = [RegexpLit na ns nb1 nb2 | na <- sshrink a, nb1 <- sshrink b1, nb2 <- sshrink b2, ns <- sshrink s]
-  sshrink (NumLit a d) = [NumLit na nd | na <- sshrink a, nd <- sshrink d]
-  sshrink (IntLit a i) = [IntLit na ni | na <- sshrink a, ni <- sshrink i]
-  sshrink (BoolLit a b) = [BoolLit na nb | na <- sshrink a, nb <- sshrink b]
-  sshrink (NullLit a) = [NullLit na | na <- sshrink a]
-  sshrink (ArrayLit a xs) = (csshrink xs) ++ xs ++ [ArrayLit na nxs | na <- sshrink a, nxs <- sshrink xs]
-  sshrink (ObjectLit a xs) =  
+  shrink (StringLit a s) = [StringLit na ns | na <- shrink a, ns <- shrink s]
+  shrink (RegexpLit a s b1 b2) = [RegexpLit na ns nb1 nb2 | na <- shrink a, nb1 <- shrink b1, nb2 <- shrink b2, ns <- shrink s]
+  shrink (NumLit a d) = [NumLit na nd | na <- shrink a, nd <- shrink d]
+  shrink (IntLit a i) = [IntLit na ni | na <- shrink a, ni <- shrink i]
+  shrink (BoolLit a b) = [BoolLit na nb | na <- shrink a, nb <- shrink b]
+  shrink (NullLit a) = [NullLit na | na <- shrink a]
+  shrink (ArrayLit a xs) = (cshrink xs) ++ xs ++ [ArrayLit na nxs | na <- shrink a, nxs <- shrink xs]
+  shrink (ObjectLit a xs) =  
     let es = map snd xs in
-    (csshrink es) ++ es ++
-    [ObjectLit na nxs | na <- sshrink a, nxs <- sshrink xs]
-  sshrink (ThisRef a) = [ThisRef na | na <- sshrink a]
-  sshrink (VarRef a id) = [VarRef na nid | na <- sshrink a, nid <- sshrink id]
-  sshrink (DotRef a e id) = [DotRef na ne nid | na <-shrink a, nid <- sshrink id,  ne <- sshrink e]
-  sshrink (BracketRef a o k) = [BracketRef na no nk | na <- sshrink a, no <-shrink o, nk <- sshrink k]
-  sshrink (NewExpr a c xs) = (shrink c) ++ [c] ++ (csshrink xs) ++ xs ++ [NewExpr na nc nxs | na <- sshrink a, nc <- sshrink c,  nxs <- sshrink xs]
-  sshrink (PrefixExpr a op e) = (shrink e) ++ [e] ++ [PrefixExpr na nop ne | na <- sshrink a, nop <-shrink op, ne <- sshrink e]
-  sshrink (UnaryAssignExpr a op v) = [UnaryAssignExpr na nop nv | na <- sshrink a, nop <- sshrink op, nv <- sshrink v]
-  sshrink (InfixExpr a op e1 e2) = (shrink e1) ++ [e1] ++ (shrink e2) ++ [e2] ++ [InfixExpr na nop ne1 ne2 | na <- sshrink a, nop <- sshrink op, ne1 <- sshrink e1, ne2 <- sshrink e2]
-  sshrink (CondExpr a e1 e2 e3) = (shrink e1) ++ [e1] ++ (shrink e2) ++ [e2] ++ (shrink e3) ++ [e3] ++ [CondExpr na ne1 ne2 ne3 | na <- sshrink a, ne1 <- sshrink e1, ne2 <- sshrink e2, ne3 <- sshrink e3]
-  sshrink (AssignExpr a op v e) = (shrink e) ++ [e] ++ [AssignExpr na nop nv ne | na <- sshrink a, nop <- sshrink op, nv <- sshrink v, ne <-shrink e] 
-  sshrink (ListExpr a es) = (csshrink es) ++ es ++ [ListExpr na nes | na <- sshrink a, nes <- sshrink es]
-  sshrink (CallExpr a e es) = (shrink e) ++ [e] ++ (csshrink es) ++ es ++ [CallExpr na ne nes | na <- sshrink a, ne <- sshrink e, nes <- sshrink es]
-  sshrink (FuncExpr a mid ids s) = [FuncExpr na nmid nids ns | na <- sshrink a, nmid <-  sshrink mid, nids <- sshrink ids, ns <- sshrink s]
+    (cshrink es) ++ es ++
+    [ObjectLit na nxs | na <- shrink a, nxs <- shrink xs]
+  shrink (ThisRef a) = [ThisRef na | na <- shrink a]
+  shrink (VarRef a id) = [VarRef na nid | na <- shrink a, nid <- shrink id]
+  shrink (DotRef a e id) = [DotRef na ne nid | na <-shrink a, nid <- shrink id,  ne <- shrink e]
+  shrink (BracketRef a o k) = [BracketRef na no nk | na <- shrink a, no <-shrink o, nk <- shrink k]
+  shrink (NewExpr a c xs) = (shrink c) ++ [c] ++ (cshrink xs) ++ xs ++ [NewExpr na nc nxs | na <- shrink a, nc <- shrink c,  nxs <- shrink xs]
+  shrink (PrefixExpr a op e) = (shrink e) ++ [e] ++ [PrefixExpr na nop ne | na <- shrink a, nop <-shrink op, ne <- shrink e]
+  shrink (UnaryAssignExpr a op v) = [UnaryAssignExpr na nop nv | na <- shrink a, nop <- shrink op, nv <- shrink v]
+  shrink (InfixExpr a op e1 e2) = (shrink e1) ++ [e1] ++ (shrink e2) ++ [e2] ++ [InfixExpr na nop ne1 ne2 | na <- shrink a, nop <- shrink op, ne1 <- shrink e1, ne2 <- shrink e2]
+  shrink (CondExpr a e1 e2 e3) = (shrink e1) ++ [e1] ++ (shrink e2) ++ [e2] ++ (shrink e3) ++ [e3] ++ [CondExpr na ne1 ne2 ne3 | na <- shrink a, ne1 <- shrink e1, ne2 <- shrink e2, ne3 <- shrink e3]
+  shrink (AssignExpr a op v e) = (shrink e) ++ [e] ++ [AssignExpr na nop nv ne | na <- shrink a, nop <- shrink op, nv <- shrink v, ne <-shrink e] 
+  shrink (ListExpr a es) = (cshrink es) ++ es ++ [ListExpr na nes | na <- shrink a, nes <- shrink es]
+  shrink (CallExpr a e es) = (shrink e) ++ [e] ++ (cshrink es) ++ es ++ [CallExpr na ne nes | na <- shrink a, ne <- shrink e, nes <- shrink es]
+  shrink (FuncExpr a mid ids s) = [FuncExpr na nmid nids ns | na <- shrink a, nmid <-  shrink mid, nids <- shrink ids, ns <- shrink s]
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (ForInInit a) where
-  sarbitrary = soneof [liftM ForInVar sarbitrary,
-                     liftM ForInLVal sarbitrary]
-  sshrink (ForInVar id) = [ForInVar nid | nid <- sshrink id]
-  sshrink (ForInLVal id) = [ForInLVal nid | nid <- sshrink id]
+  arbitrary = soneof [liftM ForInVar arbitrary,
+                     liftM ForInLVal arbitrary]
+  shrink (ForInVar id) = [ForInVar nid | nid <- shrink id]
+  shrink (ForInLVal id) = [ForInLVal nid | nid <- shrink id]
   
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (ForInit a) where  
-  sarbitrary = 
+  arbitrary = 
     frequency [
       (2, return NoInit),
-      (1, liftM VarInit sarbitrary),
-      (1, liftM ExprInit sarbitrary)]
-  sshrink (NoInit) = []
-  sshrink (VarInit vds) = [VarInit nvds | nvds <- sshrink vds]
-  sshrink (ExprInit e) = [ExprInit ne | ne <- sshrink e]
+      (1, liftM VarInit arbitrary),
+      (1, liftM ExprInit arbitrary)]
+  shrink (NoInit) = []
+  shrink (VarInit vds) = [VarInit nvds | nvds <- shrink vds]
+  shrink (ExprInit e) = [ExprInit ne | ne <- shrink e]
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (CatchClause a) where
-  sarbitrary = liftM3 CatchClause sarbitrary sarbitrary sarbitrary
-  sshrink (CatchClause a id s) = [CatchClause na nid ns | na <- sshrink a, nid <- sshrink id, ns <- sshrink s]
+  arbitrary = liftM3 CatchClause arbitrary arbitrary arbitrary
+  shrink (CatchClause a id s) = [CatchClause na nid ns | na <- shrink a, nid <- shrink id, ns <- shrink s]
   
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (VarDecl a) where
-  sarbitrary = liftM3 VarDecl sarbitrary sarbitrary sarbitrary
-  sshrink (VarDecl a id me) = [VarDecl na nid nme | na <- sshrink a, nid <- sshrink id, nme <- sshrink me]
+  arbitrary = liftM3 VarDecl arbitrary arbitrary arbitrary
+  shrink (VarDecl a id me) = [VarDecl na nid nme | na <- shrink a, nid <- shrink id, nme <- shrink me]
 
 instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Statement a) where
-  sarbitrary = 
-    sGen [(2, liftM2 BlockStmt sarbitrary rrarbitrary),
-          (0, liftM  EmptyStmt sarbitrary),
-          (1, liftM2 ExprStmt sarbitrary rarbitrary),
-          (3, liftM4 IfStmt sarbitrary rarbitrary rarbitrary rarbitrary),
-          (2, liftM3 IfSingleStmt sarbitrary rarbitrary rarbitrary),
-          (3, liftM3 SwitchStmt sarbitrary rarbitrary rrarbitrary),
-          (2, liftM3 WhileStmt sarbitrary rarbitrary rarbitrary),
-          (2, liftM3 DoWhileStmt sarbitrary rarbitrary rarbitrary),
-          (0, liftM2 BreakStmt sarbitrary sarbitrary),
-          (0, liftM2 ContinueStmt sarbitrary sarbitrary),
-          (1, liftM3 LabelledStmt sarbitrary sarbitrary rarbitrary),
-          (3, liftM4 ForInStmt sarbitrary rarbitrary rarbitrary rarbitrary),
-          (4, liftM5 ForStmt sarbitrary rarbitrary rarbitrary rarbitrary rarbitrary),
+  arbitrary = 
+    sGen [(2, liftM2 BlockStmt arbitrary rrarbitrary),
+          (0, liftM  EmptyStmt arbitrary),
+          (1, liftM2 ExprStmt arbitrary rarbitrary),
+          (3, liftM4 IfStmt arbitrary rarbitrary rarbitrary rarbitrary),
+          (2, liftM3 IfSingleStmt arbitrary rarbitrary rarbitrary),
+          (3, liftM3 SwitchStmt arbitrary rarbitrary rrarbitrary),
+          (2, liftM3 WhileStmt arbitrary rarbitrary rarbitrary),
+          (2, liftM3 DoWhileStmt arbitrary rarbitrary rarbitrary),
+          (0, liftM2 BreakStmt arbitrary arbitrary),
+          (0, liftM2 ContinueStmt arbitrary arbitrary),
+          (1, liftM3 LabelledStmt arbitrary arbitrary rarbitrary),
+          (3, liftM4 ForInStmt arbitrary rarbitrary rarbitrary rarbitrary),
+          (4, liftM5 ForStmt arbitrary rarbitrary rarbitrary rarbitrary rarbitrary),
           (4, arbtry),
-          (1, liftM2 ThrowStmt sarbitrary rarbitrary),
-          (1, liftM2 ReturnStmt sarbitrary rarbitrary),
-          (2, liftM3 WithStmt sarbitrary rarbitrary rarbitrary),
-          (2, liftM2 VarDeclStmt sarbitrary (listOf1 rrarbitrary)),
-          (1, liftM4 FunctionStmt sarbitrary sarbitrary sarbitrary rarbitrary)]
+          (1, liftM2 ThrowStmt arbitrary rarbitrary),
+          (1, liftM2 ReturnStmt arbitrary rarbitrary),
+          (2, liftM3 WithStmt arbitrary rarbitrary rarbitrary),
+          (2, liftM2 VarDeclStmt arbitrary (listOf1 rrarbitrary)),
+          (1, liftM4 FunctionStmt arbitrary arbitrary arbitrary rarbitrary)]
     where arbtry = 
             do (mCatch, mFinally) <- soneof [liftM2 (,) (return Nothing) (liftM Just rarbitrary),
                                             liftM2 (,) (liftM Just rarbitrary) (return Nothing),
                                             liftM2 (,) (liftM Just rarbitrary) (liftM Just rarbitrary)]
-               a <- sarbitrary                      
+               a <- arbitrary                      
                body <- rarbitrary
                return $ TryStmt a body mCatch mFinally
     
-  sshrink (BlockStmt a body) = emptyStmtShrink a ++ 
-                              [BlockStmt as bs | as <- sshrink a, bs <- sshrink body]
-  sshrink (EmptyStmt a) = emptyStmtShrink a
-  sshrink (ExprStmt a e) = emptyStmtShrink a ++ 
-                          [ExprStmt as es | as <- sshrink a, es <- sshrink e]
-  sshrink (IfStmt a e th el) = emptyStmtShrink a ++
-                              [IfStmt as es ths els | as <- sshrink a, es <- sshrink e, ths <- sshrink th, els <- sshrink el]
-  sshrink (IfSingleStmt a e th) = emptyStmtShrink a ++
-                                 [IfSingleStmt as es ths | as <- sshrink a, es <- sshrink e, ths <- sshrink th]
-  sshrink (SwitchStmt a e cases) = emptyStmtShrink a ++
-                                  [SwitchStmt as es cs | as <- sshrink a, es <-shrink e, cs <- sshrink cases] 
-  sshrink (WhileStmt a e b) = emptyStmtShrink a ++
-                             [WhileStmt as es bs | as <- sshrink a, es <- sshrink e, bs <- sshrink b]
-  sshrink (DoWhileStmt a b e) = emptyStmtShrink a ++  
-                               [DoWhileStmt as bs es | as <- sshrink a, es <- sshrink e, bs <- sshrink b]
-  sshrink (BreakStmt a l) = emptyStmtShrink a ++
-                           [BreakStmt as ls | as <- sshrink a, ls <- sshrink l]
-  sshrink (ContinueStmt a l) = emptyStmtShrink a ++
-                              [ContinueStmt as ls | as <- sshrink a, ls <- sshrink l]
-  sshrink (LabelledStmt a l s) = emptyStmtShrink a ++
-                                [LabelledStmt as ls ss | as <- sshrink a, ls <- sshrink l, ss <- sshrink s]
-  sshrink (ForInStmt a i o s) = emptyStmtShrink a ++
-                               [ForInStmt as is os ss | as <- sshrink a, is <-shrink i, os <-shrink o, ss <- sshrink s]
-  sshrink (ForStmt a i e1 e2 s) = emptyStmtShrink a ++
-                                 [ForStmt as is e1s e2s ss | as <- sshrink a, is <- sshrink i, e1s <- sshrink e1, e2s <- sshrink e2, ss <- sshrink s]
-  sshrink (TryStmt a b cs mf) = emptyStmtShrink a ++
-                               [TryStmt as bs css mfs | as <- sshrink a, bs <- sshrink b, css <- sshrink cs, mfs <- sshrink mf]
-  sshrink (ThrowStmt a e) = emptyStmtShrink a ++
-                           [ThrowStmt as es | as <- sshrink a, es <- sshrink e]
-  sshrink (ReturnStmt a e) = emptyStmtShrink a ++
-                            [ReturnStmt as es | as <- sshrink a, es <- sshrink e]
-  sshrink (WithStmt a o s) = emptyStmtShrink a ++
-                            [WithStmt as os ss | as <- sshrink a, os <- sshrink o, ss <- sshrink s]
-  sshrink (VarDeclStmt a vds) = emptyStmtShrink a ++
-                               [VarDeclStmt as vdss | as <- sshrink a, vdss <- sshrink vds]
-  sshrink (FunctionStmt a n pars b) = emptyStmtShrink a ++
-                                     [FunctionStmt as ns parss bs | as <- sshrink a, ns <- sshrink n, parss <- sshrink pars, bs <- sshrink b]
+  shrink (BlockStmt a body) = emptyStmtShrink a ++ 
+                              [BlockStmt as bs | as <- shrink a, bs <- shrink body]
+  shrink (EmptyStmt a) = emptyStmtShrink a
+  shrink (ExprStmt a e) = emptyStmtShrink a ++ 
+                          [ExprStmt as es | as <- shrink a, es <- shrink e]
+  shrink (IfStmt a e th el) = emptyStmtShrink a ++
+                              [IfStmt as es ths els | as <- shrink a, es <- shrink e, ths <- shrink th, els <- shrink el]
+  shrink (IfSingleStmt a e th) = emptyStmtShrink a ++
+                                 [IfSingleStmt as es ths | as <- shrink a, es <- shrink e, ths <- shrink th]
+  shrink (SwitchStmt a e cases) = emptyStmtShrink a ++
+                                  [SwitchStmt as es cs | as <- shrink a, es <-shrink e, cs <- shrink cases] 
+  shrink (WhileStmt a e b) = emptyStmtShrink a ++
+                             [WhileStmt as es bs | as <- shrink a, es <- shrink e, bs <- shrink b]
+  shrink (DoWhileStmt a b e) = emptyStmtShrink a ++  
+                               [DoWhileStmt as bs es | as <- shrink a, es <- shrink e, bs <- shrink b]
+  shrink (BreakStmt a l) = emptyStmtShrink a ++
+                           [BreakStmt as ls | as <- shrink a, ls <- shrink l]
+  shrink (ContinueStmt a l) = emptyStmtShrink a ++
+                              [ContinueStmt as ls | as <- shrink a, ls <- shrink l]
+  shrink (LabelledStmt a l s) = emptyStmtShrink a ++
+                                [LabelledStmt as ls ss | as <- shrink a, ls <- shrink l, ss <- shrink s]
+  shrink (ForInStmt a i o s) = emptyStmtShrink a ++
+                               [ForInStmt as is os ss | as <- shrink a, is <-shrink i, os <-shrink o, ss <- shrink s]
+  shrink (ForStmt a i e1 e2 s) = emptyStmtShrink a ++
+                                 [ForStmt as is e1s e2s ss | as <- shrink a, is <- shrink i, e1s <- shrink e1, e2s <- shrink e2, ss <- shrink s]
+  shrink (TryStmt a b cs mf) = emptyStmtShrink a ++
+                               [TryStmt as bs css mfs | as <- shrink a, bs <- shrink b, css <- shrink cs, mfs <- shrink mf]
+  shrink (ThrowStmt a e) = emptyStmtShrink a ++
+                           [ThrowStmt as es | as <- shrink a, es <- shrink e]
+  shrink (ReturnStmt a e) = emptyStmtShrink a ++
+                            [ReturnStmt as es | as <- shrink a, es <- shrink e]
+  shrink (WithStmt a o s) = emptyStmtShrink a ++
+                            [WithStmt as os ss | as <- shrink a, os <- shrink o, ss <- shrink s]
+  shrink (VarDeclStmt a vds) = emptyStmtShrink a ++
+                               [VarDeclStmt as vdss | as <- shrink a, vdss <- shrink vds]
+  shrink (FunctionStmt a n pars b) = emptyStmtShrink a ++
+                                     [FunctionStmt as ns parss bs | as <- shrink a, ns <- shrink n, parss <- shrink pars, bs <- shrink b]
     
-emptyStmtShrink a = [EmptyStmt a2 | a2 <- sshrink a]    
+emptyStmtShrink a = [EmptyStmt a2 | a2 <- shrink a]    
 
 type LabelSubst   = Map (Id ()) (Id ())
 emptyConstantPool = Data.Map.empty
 
 instance (Data a, StatefulArbitrary ArbState a) => StatefulArbitrary ArbState (JavaScript a) where
-  sarbitrary = do {s <- liftM2 Script sarbitrary sarbitrary;
+  arbitrary = do {s <- liftM2 Script arbitrary arbitrary;
                   if isProgramFixable s then fixLabels s
-                  else sarbitrary}
-  sshrink (Script a ss) = [Script na nss | na <- sshrink a, nss <- sshrink ss]
+                  else arbitrary}
+  shrink (Script a ss) = [Script na nss | na <- shrink a, nss <- shrink ss]
   
 -- | Fixes labels so that labeled breaks and continues refer to
 -- existing labeled statements, enclosing them; also, reduces the size
@@ -395,7 +400,7 @@ removeDuplicateLabels (Script x stmts) =
 selectRandomElement :: [a] -> Gen a
 selectRandomElement xs = 
   let l = length xs in
-  do n <- sarbitrary
+  do n <- arbitrary
      return $ xs !! (n `mod` l - 1)
 -- | Changes labels of break/continue so that they refer to one of the
 -- enclosing labels
