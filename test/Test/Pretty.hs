@@ -10,9 +10,12 @@ import Language.ECMAScript3.Syntax.Annotations
 --import System.Exit
 import Language.ECMAScript3.SourceDiff
 import Test.QuickCheck
+import Data.List
 
 tests_pretty :: Test
-tests_pretty = testProperty "Parse is the inverse of pretty" prettyParseEquivalence
+tests_pretty = testGroup "Pretty-printer tests"
+               [testProperty "Parse is the inverse of pretty" prettyParseEquivalence
+               ,testProperty "Expressions not safe to print in an Expression Statement" unsafeExprStmtProp]
 
 -- main :: IO ()
 -- main = 
@@ -41,3 +44,10 @@ prettyParseEquivalence orig =
           msg ="The parse of the pretty-printed AST didn't match the original\n"
                ++"Diff:\n" ++ jsDiff orig (reannotate (const ()) parsed)
       in whenFail (putStrLn msg) eq
+
+unsafeExprStmtProp :: Expression () -> Bool
+unsafeExprStmtProp e =
+  let se = show $ prettyPrint e
+      actuallyUnsafe = "{" `isPrefixOf` se || "function" `isPrefixOf` se
+      oracleUnsafe = unsafeInExprStmt e
+  in  actuallyUnsafe == oracleUnsafe
