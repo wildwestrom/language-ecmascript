@@ -32,7 +32,8 @@ parsePrettyTest :: FilePath -> Assertion
 parsePrettyTest filename =
   readFile filename >>= \src ->
   case parseFromString src of
-    Left err -> assertFailure $ "Can't parse a test-case: " ++ filename
+    Left err -> assertFailure $ "Can't parse a test-case: " ++ filename ++
+                                "\nThe error was " ++ (show err)
     Right js -> let str = show $ prettyPrint js
                 in  case parseFromString str of
                   Left err ->
