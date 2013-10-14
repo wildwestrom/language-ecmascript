@@ -3,10 +3,14 @@
 -- JavaScript tokens.
 
 module Language.ECMAScript3.Lexer(lexeme,identifier,reserved,operator,reservedOp,charLiteral,
-                        stringLiteral,natural,integer,float,naturalOrFloat,
-                        decimal,hexadecimal,octal,symbol,whiteSpace,parens,
+                        stringLiteral,
+--                        natural,integer,float,naturalOrFloat,
+--                        decimal,
+--                                 hexadecimal,octal,
+                                 symbol,whiteSpace,parens,
                         braces,brackets,squares,semi,comma,colon,dot,
-                        identifierStart) where
+                        identifierStart
+                                 ,hexIntLit,decIntLit, decDigits, decDigitsOpt, exponentPart, decLit) where
 
 import Prelude hiding (lex)
 import Text.Parsec
@@ -14,6 +18,8 @@ import qualified Text.Parsec.Token as T
 import Language.ECMAScript3.Parser.State
 import Language.ECMAScript3.Parser.Type
 import Control.Monad.Identity
+import Control.Applicative ((<$>), (<*>))
+import Data.Maybe (isNothing)
 
 identifierStart :: Stream s Identity Char => Parser s Char
 identifierStart = letter <|> oneOf "$_"
@@ -56,20 +62,20 @@ charLiteral :: Stream s Identity Char => Parser s Char
 charLiteral = T.charLiteral lex	
 stringLiteral :: Stream s Identity Char => Parser s String
 stringLiteral = T.stringLiteral lex
-natural :: Stream s Identity Char => Parser s Integer
-natural = T.natural lex	
-integer :: Stream s Identity Char => Parser s Integer
-integer = T.integer lex	
-float :: Stream s Identity Char => Parser s Double
-float = T.float lex
-naturalOrFloat :: Stream s Identity Char => Parser s (Either Integer Double)
-naturalOrFloat = T.naturalOrFloat lex
-decimal :: Stream s Identity Char => Parser s Integer
-decimal = T.decimal lex	
-hexadecimal :: Stream s Identity Char => Parser s Integer
-hexadecimal = T.hexadecimal lex	
-octal :: Stream s Identity Char => Parser s Integer
-octal = T.octal lex
+-- natural :: Stream s Identity Char => Parser s Integer
+-- natural = T.natural lex	
+-- integer :: Stream s Identity Char => Parser s Integer
+-- integer = T.integer lex	
+-- float :: Stream s Identity Char => Parser s Double
+-- float = T.float lex
+-- naturalOrFloat :: Stream s Identity Char => Parser s (Either Integer Double)
+-- naturalOrFloat = T.naturalOrFloat lex
+-- decimal :: Stream s Identity Char => Parser s Integer
+-- decimal = T.decimal lex	
+-- hexadecimal :: Stream s Identity Char => Parser s Integer
+-- hexadecimal = T.hexadecimal lex	
+-- octal :: Stream s Identity Char => Parser s Integer
+-- octal = T.octal lex
 symbol :: Stream s Identity Char => String -> Parser s String
 symbol = T.symbol lex
 whiteSpace :: Stream s Identity Char => Parser s ()
@@ -92,3 +98,50 @@ brackets :: Stream s Identity Char => Parser s a -> Parser s a
 brackets = T.brackets lex
 lexeme :: Stream s Identity Char => Parser s a -> Parser s a
 lexeme = T.lexeme lex
+
+-- 7.8.3
+decIntLit :: Stream s Identity Char => Parser s String
+decIntLit = digit >>= \d -> case d of
+  '0' -> return [d]
+  _   -> (d:) <$> decDigitsOpt
+
+decDigitsOpt :: Stream s Identity Char => Parser s String
+decDigitsOpt = many digit
+
+decDigits :: Stream s Identity Char => Parser s String
+decDigits = many1 digit
+
+hexIntLit :: Stream s Identity Char => Parser s String
+hexIntLit = do try (char '0' >> oneOf "xX")
+               many1 hexDigit
+
+exponentPart :: Stream s Identity Char => Parser s String
+exponentPart = do ei <- oneOf "eE"
+                  sgn<- option "" $ oneOf "+-" >>= \x -> return [x]
+                  si <- decDigits
+                  return (ei:(sgn++si))
+
+-- data Sign = Plus | Minus
+
+-- signedInteger :: Stream s Identity Char => Parser s (Sign, String)
+-- signedInteger = do sgn <- option Plus (char '+' >> return Plus)
+--                                    <|>(char '+' >> return Minus)
+--                    s <- decDigits
+--                    return (sgn, s)
+
+-- | returns (s, True) if the number is an integer, an (s, False)
+-- otherwise
+decLit :: Stream s Identity Char => Parser s (String, Bool)
+decLit =   
+  choice [do whole <- decIntLit
+             mfrac <- optionMaybe ((:) <$> char '.' <*> decDigitsOpt)
+             mexp  <- optionMaybe exponentPart
+             let isint = isNothing mfrac && isNothing mexp
+             return (whole ++ marr mfrac ++ marr mexp, isint)
+         ,do frac <- (:) <$> (char '.') <*> decDigits
+             exp <- option "" exponentPart
+             return ('0':frac++exp, True)             
+         ]
+
+marr (Just ar) = ar
+marr Nothing = []

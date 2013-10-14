@@ -36,11 +36,12 @@ import Text.Parsec hiding (parse)
 import Text.Parsec.Expr
 import Control.Monad(liftM,liftM2)
 import Control.Monad.Trans (MonadIO,liftIO)
-import Numeric(readDec,readOct,readHex)
+import Numeric(readDec,readOct,readHex, readFloat)
 import Data.Char
 import Control.Monad.Identity
 import Data.Maybe (isJust, isNothing, fromMaybe)
 import Control.Monad.Error.Class
+import Control.Applicative ((<$>), (<*>))
 
 {-# DEPRECATED ParsedStatement, ParsedExpression, StatementParser,
                ExpressionParser
@@ -486,65 +487,48 @@ parseObjectLit =
         -- much shorter.
         name <- liftM (\(StringLit p s) -> PropString p s) parseStringLit
             <|> liftM2 PropId getPosition identifier
-            <|> liftM2 PropNum getPosition decimal
+            <|> liftM2 PropNum getPosition (parseNumber >>= toInt)
         colon
         val <- assignExpr
         return (name,val)
+      toInt eid = case eid of
+        Left i -> return $ fromIntegral i
+        Right d-> unexpected "Floating point number in property name"
+                  -- ^ Note, the spec actually allows floats in property names.
+                  -- This is left for legacy reasons and will be fixed in 1.0
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
           return $ ObjectLit pos props
 
 --{{{ Parsing numbers.  From pg. 17-18 of ECMA-262.
-hexLit :: Stream s Identity Char => Parser s (Bool, Double)
-hexLit = do
-  try (char '0' >> oneOf "xX")
-  digits <- many1 (oneOf "0123456789abcdefABCDEF")
-  [(hex,"")] <- return $ Numeric.readHex digits
-  return (True, hex)
-
--- | Creates a decimal value from a whole, fractional and exponent part.
-mkDecimal :: Integer -> Integer -> Integer -> Integer -> Double
-mkDecimal whole frac fracLen exp = 
-  ((fromInteger whole) + ((fromInteger frac) * (10 ^^ (-fracLen)))) * (10 ^^ exp)
-
-exponentPart :: Stream s Identity Char => Parser s Integer
-exponentPart = do
-  oneOf "eE"
-  (char '+' >> decimal) <|> (char '-' >> negate `fmap` decimal) <|> decimal
+hex :: Stream s Identity Char => Parser s (Either Int Double)
+hex = do s <- hexIntLit
+         Left <$> wrapReadS Numeric.readHex s
 
 --wrap a parser's result in a Just:
 jparser :: Stream s Identity Char => Parser s a -> Parser s (Maybe a)
 jparser = liftM Just
 
-decLit :: Stream s Identity Char => Parser s (Bool, Double)
-decLit = 
-  (do whole <- decimal
-      mfrac <- option Nothing (jparser (char '.' >> decimal))
-      mexp <-  option Nothing (jparser exponentPart)
-      if isNothing mfrac && isNothing mexp
-        then return (True, fromIntegral whole)
-        else let frac = fromIntegral (fromMaybe 0 mfrac)
-             in  return (False, mkDecimal (fromIntegral whole) frac 
-                                          (intLen frac)
-                                          (fromIntegral (fromMaybe 0 mexp))))
-  <|>
-  (do frac <- char '.' >> decimal
-      exp <- option 0 exponentPart
-      let ifrac = fromIntegral frac
-      return (False, mkDecimal 0 ifrac (intLen frac) (fromIntegral exp)))
+decimal :: Stream s Identity Char => Parser s (Either Int Double)
+decimal = do (s, i) <- decLit
+             if i then Left <$> wrapReadS readDec s
+                  else Right <$> wrapReadS readFloat s
 
-intLen i | i `div` 10 < 1 = 1
-intLen i | otherwise = 1 + intLen (i `div` 10)
+wrapReadS :: ReadS a -> String -> Parser s a
+wrapReadS r s = case r s of
+  [(a, "")] -> return a
+  _         -> fail "Bad parse: could not convert a string to a Haskell value"
+
+parseNumber:: Stream s Identity Char => Parser s (Either Int Double) 
+parseNumber = hex <|> decimal
 
 parseNumLit:: Stream s Identity Char => ExpressionParser s
-parseNumLit = do
-    pos <- getPosition
-    (isint, num) <- lexeme $ hexLit <|> decLit
-    notFollowedBy identifierStart <?> "whitespace"
-    if isint
-      then return $ IntLit pos (round num) 
-      else return $ NumLit pos num
-
+parseNumLit = do pos <- getPosition
+                 eid <- lexeme $ parseNumber
+                 notFollowedBy identifierStart <?> "whitespace"
+                 return $ case eid of
+                   Left i -> IntLit pos i
+                   Right d-> NumLit pos d
 
 ------------------------------------------------------------------------------
 -- Position Helper
