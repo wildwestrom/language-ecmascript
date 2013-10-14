@@ -340,10 +340,20 @@ ppPostfixExpression e = case e of
 -- 11.4
 ppUnaryExpression :: Expression a -> Doc
 ppUnaryExpression e = case e of
-  PrefixExpr _ op e' -> prettyPrint op <> ppUnaryExpression e'
+  PrefixExpr _ op e' -> prettyPrint op <> prefixSpace op <> ppUnaryExpression e'
   UnaryAssignExpr _ PrefixInc e' -> text "++" <> prettyPrint e'
   UnaryAssignExpr _ PrefixDec e' -> text "--" <> prettyPrint e'
   _ -> ppPostfixExpression e
+
+prefixSpace :: PrefixOp -> Doc
+prefixSpace op = case op of
+  PrefixLNot   -> empty
+  PrefixBNot   -> empty
+  PrefixPlus   -> empty
+  PrefixMinus  -> empty
+  PrefixTypeof -> space
+  PrefixVoid   -> space
+  PrefixDelete -> space
 
 -- 11.5
 ppMultiplicativeExpression :: Expression a -> Doc
