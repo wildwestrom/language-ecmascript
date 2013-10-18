@@ -220,7 +220,7 @@ parseLabelledStmt = do
 parseExpressionStmt:: Stream s Identity Char => StatementParser s
 parseExpressionStmt = do
   pos <- getPosition
-  expr <- parseListExpr -- TODO: spec 12.4?
+  expr <- parseExpression -- TODO: spec 12.4?
   optional semi
   return $ ExprStmt pos expr
 
@@ -251,7 +251,7 @@ parseForStmt =
           semi
           test <- optionMaybe parseExpression
           semi
-          iter <- optionMaybe parseListExpr
+          iter <- optionMaybe parseExpression
           reservedOp ")" <?> "closing paren"
           stmt <- parseStatement
           return $ ForStmt pos init test iter stmt
@@ -303,7 +303,7 @@ parseVarDecl :: Stream s Identity Char => Parser s (VarDecl SourcePos)
 parseVarDecl = do
   pos <- getPosition
   id <- identifier
-  init <- (reservedOp "=" >> liftM Just parseExpression) <|> return Nothing
+  init <- (reservedOp "=" >> liftM Just assignExpr) <|> return Nothing
   return (VarDecl pos id init)
 
 parseVarDeclStmt:: Stream s Identity Char => StatementParser s
@@ -382,7 +382,7 @@ parseVarRef:: Stream s Identity Char => ExpressionParser s
 parseVarRef = liftM2 VarRef getPosition identifier
 
 parseArrayLit:: Stream s Identity Char => ExpressionParser s
-parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepEndBy` comma))
+parseArrayLit = liftM2 ArrayLit getPosition (squares (assignExpr `sepEndBy` comma))
 
 parseFuncExpr :: Stream s Identity Char => ExpressionParser s
 parseFuncExpr = do
@@ -505,10 +505,6 @@ hex :: Stream s Identity Char => Parser s (Either Int Double)
 hex = do s <- hexIntLit
          Left <$> wrapReadS Numeric.readHex s
 
---wrap a parser's result in a Just:
-jparser :: Stream s Identity Char => Parser s a -> Parser s (Maybe a)
-jparser = liftM Just
-
 decimal :: Stream s Identity Char => Parser s (Either Int Double)
 decimal = do (s, i) <- decLit
              if i then Left <$> wrapReadS readDec s
@@ -543,7 +539,7 @@ withPos cstr p = do { pos <- getPosition; e <- p; return $ cstr pos e }
 dotRef e = (reservedOp "." >> withPos cstr identifier) <?> "property.ref"
     where cstr pos = DotRef pos e
 
-funcApp e = parens (withPos cstr (parseExpression `sepBy` comma)) 
+funcApp e = parens (withPos cstr (assignExpr `sepBy` comma)) 
          <?>"(function application)"
     where cstr pos = CallExpr pos e
 
@@ -575,7 +571,7 @@ parseNewExpr =
   (do pos <- getPosition
       reserved "new"
       constructor <- parseSimpleExprForNew Nothing -- right-associativity
-      arguments <- try (parens (parseExpression `sepBy` comma)) <|> return []
+      arguments <- try (parens (assignExpr `sepBy` comma)) <|> return []
       return (NewExpr pos constructor arguments)) <|>
   parseSimpleExpr'
 
@@ -741,11 +737,11 @@ assignExpr = do
   assign <|> return lhs
 
 parseExpression:: Stream s Identity Char => ExpressionParser s
-parseExpression = assignExpr
+parseExpression = parseListExpr
 
 -- | A parser that parses ECMAScript expressions
 expression :: Stream s Identity Char => Parser s (Expression SourcePos)
-expression = assignExpr
+expression = parseExpression
 
 parseListExpr :: Stream s Identity Char => ExpressionParser s
 parseListExpr = assignExpr `sepBy1` comma >>= \exprs ->
