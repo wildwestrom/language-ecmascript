@@ -88,6 +88,7 @@ Test-Suite test
     test-framework >= 0.8 && < 0.9,
     test-framework-hunit >= 0.3.0 && < 0.4,
     test-framework-quickcheck2 >= 0.3.0.1 && < 0.4,
+    uniplate >= 1.6 && <1.7,
     Diff == 0.3.*,
     language-ecmascript
   Default-Extensions: DeriveDataTypeable, ScopedTypeVariables, DeriveFunctor, DeriveFoldable, DeriveTraversable, FlexibleContexts

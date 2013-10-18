@@ -12,6 +12,7 @@ import Language.ECMAScript3.Syntax
 import Language.ECMAScript3.Syntax.Annotations
 import Language.ECMAScript3.SourceDiff
 import Control.Monad
+import Data.Default.Class
 
 
 tests_unit :: Test
@@ -47,4 +48,3 @@ parsePrettyTest filename =
                       let msg = "The parse of the pretty-printed AST didn't match the original\n"
                                 ++ "Diff:\n" ++ jsDiff js js'
                       assertFailure msg
-
