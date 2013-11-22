@@ -5,7 +5,7 @@ Ported the pretty printer to use 'wl-pprint' instead of
 'pretty'. Pretty-printed code is now more compact and resembles common
 formatting conventions. Fixed bugs where the pretty-printer produced
 unparseable source representations for expression statements starting with
-'{' or "function".
+'{' or "function". Disabled the QuickCheck pretty-printer test.
 
 =0.15.2=
 Fixed an error in the .cabal file that prevented some of the test modules
