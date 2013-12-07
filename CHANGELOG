@@ -1,5 +1,8 @@
 Version change log.
 
+=0.15.4=
+Fixed haddock build failure.
+
 =0.15.3=
 Ported the pretty printer to use 'wl-pprint' instead of
 'pretty'. Pretty-printed code is now more compact and resembles common
