@@ -1,5 +1,5 @@
 Name:           language-ecmascript
-Version:        0.15
+Version:        0.15.3
 Cabal-Version:	>= 1.10
 Copyright:      (c) 2007-2012 Brown University, (c) 2008-2010 Claudiu Saftoiu,
                 (c) 2012-2013 Stevens Institute of Technology
@@ -17,11 +17,10 @@ Category:       Language
 Build-Type:     Simple
 Synopsis:       JavaScript parser and pretty-printer library
 Description:
-  Tools for working with ECMAScript 3 (popularly known as JavaScript).
-  Includes a parser, pretty-printer, a simple quasi-quoter and tools
-  for working with source tree annotations and an arbitrary
-  instance. Analyses have migrated to package
-  'language-ecmascript-analysis'.
+  Tools for working with ECMAScript 3 (popularly known as JavaScript). 
+  Includes a parser, pretty-printer, tools for working with source tree
+  annotations and an arbitrary instance. See CHANGELOG for a summary of
+  changes.
 
 Source-repository head
    type: git
@@ -30,22 +29,24 @@ Source-repository head
 Source-repository this
    type: git
    location: git://github.com/jswebtools/language-ecmascript.git
-   tag: 0.15
+   tag: 0.15.3
 
 Library
   Hs-Source-Dirs:
     src
   Build-Depends:
     base >= 4 && < 5,
-    mtl >= 1.1.0.1,
-    parsec < 3.2.0,
-    pretty >= 0.1,
-    containers >= 0.1,
+    mtl >= 1 && < 3,
+    parsec > 3 && < 3.2.0,
+    pretty,
+    containers == 0.*,
     uniplate >= 1.6 && <1.7,
     data-default-class >= 0.0.1 && < 0.1,
-    QuickCheck >= 2.5,
-    template-haskell,
-    Diff == 0.3.*
+    QuickCheck >= 2.5 && < 2.7,
+    testing-feat >= 0.4 && < 0.5,
+    template-haskell >= 2.8 && < 2.9,
+    Diff == 0.3.*,
+    charset >= 0.3.6 && < 1.0
   ghc-options:
     -fwarn-incomplete-patterns
   Exposed-Modules:
@@ -75,20 +76,22 @@ Test-Suite test
     Test.Diff
     Test.Unit
     Test.Pretty
+    Test.Arbitrary
   Build-Depends:
     base >= 4 && < 5,
-    mtl >= 1.1.0.1,
-    parsec < 3.2.0,
-    pretty >= 0.1,
-    containers >= 0.1 && < 0.6,
-    directory,
-    filepath,
-    HUnit,
-    QuickCheck >= 2.5 && < 2.6,
+    mtl >= 1 && < 3,
+    parsec >= 3 && < 3.2.0,
+    pretty,
+    containers == 0.*,
+    directory >= 1.2 && < 1.3,
+    filepath >= 1.3 && < 1.4,
+    HUnit >= 1.2 && < 1.3,
+    QuickCheck >= 2.5 && < 2.7,
     data-default-class >= 0.0.1 && < 0.1,
     test-framework >= 0.8 && < 0.9,
     test-framework-hunit >= 0.3.0 && < 0.4,
     test-framework-quickcheck2 >= 0.3.0.1 && < 0.4,
+    uniplate >= 1.6 && <1.7,
     Diff == 0.3.*,
     language-ecmascript
   Default-Extensions: DeriveDataTypeable, ScopedTypeVariables, DeriveFunctor, DeriveFoldable, DeriveTraversable, FlexibleContexts

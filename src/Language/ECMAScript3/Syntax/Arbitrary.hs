@@ -1,18 +1,14 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 -- | QuickCheck $Arbitrary$ instances for ECMAScript 3 abstract
 -- syntax.
 
 module Language.ECMAScript3.Syntax.Arbitrary where
 
 import Language.ECMAScript3.Syntax
-import Test.QuickCheck hiding (Prop, Arbitrary (..))
-import qualified Test.QuickCheck.Arbitrary as Arb
+import Test.QuickCheck hiding (Prop)
+import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Property (forAllShrink)
-import Data.Map hiding (map,null,filter,foldr)
+import Data.Map hiding (map,null,filter,foldr,toList,singleton)
 import Data.List (nub,delete)
 import Data.Data
 import Data.Char
@@ -22,181 +18,70 @@ import Data.Generics.Str
 import Control.Monad
 import Control.Monad.State
 import Data.Maybe (maybeToList)
+import Test.Feat
+import Test.Feat.Class
+import Test.Feat.Enumerate
+import Test.Feat.Modifiers
+import Data.CharSet (toList)
+import Data.CharSet.Unicode
 
--- | The generator state: a stack statements enclosing the current
--- context
-data ArbState = ArbState [Enclosing]
+deriveEnumerable ''AssignOp
+deriveEnumerable ''InfixOp
+deriveEnumerable ''UnaryAssignOp
+deriveEnumerable ''PrefixOp
+deriveEnumerable ''Id
+deriveEnumerable ''CaseClause
+deriveEnumerable ''CatchClause
+deriveEnumerable ''Prop
+deriveEnumerable ''LValue
+deriveEnumerable ''ForInit
+deriveEnumerable ''ForInInit
+deriveEnumerable ''VarDecl
+deriveEnumerable ''Expression
+deriveEnumerable ''Statement
+deriveEnumerable ''JavaScript
 
-data Enclosing = Enclosing EnclType [String]
-data EnclType  = Other | Iter | Switch
 
-type SGen s a = StateT s Gen a
+instance Arbitrary (AssignOp) where
+  arbitrary = sized uniform
 
--- | A stateful arbitrary class
-class StatefulArbitrary s a where
-  arbitrary :: SGen s a
-  shrink :: a -> State s [a]
-  shrink a = return [a]
+instance Arbitrary (InfixOp) where
+  arbitrary = sized uniform
 
-toArbitrary :: StatefulArbitrary s a => s -> Gen a
-toArbitrary s = evalStateT arbitrary s
-
-toShrink :: StatefulArbitrary s a => s -> (a -> [a])
-toShrink s = \a -> evalState (shrink a) s
-
-soneof :: [SGen s a] -> SGen s a
-soneof [] = error "soneof called with an empty list"
-soneof sgens = do i <- lift $ choose (0, length sgens - 1)
-                  sgens !! i
-
-instance StatefulArbitrary ArbState AssignOp where
-  arbitrary = 
-    lift $ elements
-             [OpAssign, OpAssignAdd, OpAssignSub, OpAssignMul, OpAssignDiv, 
-              OpAssignMod, OpAssignLShift, OpAssignSpRShift, OpAssignZfRShift,
-              OpAssignBAnd, OpAssignBXor, OpAssignBOr]
-
-instance StatefulArbitrary ArbState InfixOp where
-  arbitrary = 
-    lift $ elements [OpLT, OpLEq, OpGT, OpGEq , OpIn , OpInstanceof, OpEq, OpNEq, 
-                     OpStrictEq, OpStrictNEq, OpLAnd, OpLOr,
-                     OpMul, OpDiv, OpMod , OpSub, OpLShift, OpSpRShift,
-                     OpZfRShift, OpBAnd, OpBXor, OpBOr, OpAdd]
+instance Arbitrary (UnaryAssignOp) where
+  arbitrary = sized uniform
   
-instance StatefulArbitrary ArbState (UnaryAssignOp) where
-  arbitrary = 
-    lift $ elements [PrefixInc, PrefixDec, PostfixInc, PostfixDec]
-  
-instance StatefulArbitrary ArbState PrefixOp where
-  arbitrary = 
-    lift $ elements [PrefixLNot, PrefixBNot, PrefixPlus, PrefixMinus, 
-                     PrefixTypeof, PrefixVoid, PrefixDelete]
+instance Arbitrary (PrefixOp) where
+  arbitrary = sized uniform
 
+instance (Enumerable a, Arbitrary a) => Arbitrary (Id a) where
+  arbitrary = sized uniform >>= fixUp
+  shrink (Id a s) = [Id na ns | ns <- shrink s, na <- shrink a]
 
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Id a) where
-  arbitrary = liftM2 Id arbitrary identifier
-  shrink (Id a s) = do ns <- shrink s
-                       na <- shrink a
-                       return [Id na' ns' | ns' <- ns, na' <- na]
-
-instance (StatefulArbitrary ArbState a) => StatefulArbitrary ArbState [a] where
-  arbitrary = lift $ sized $ \n -> do k <- lift choose (0, n)
-                                      sequence [ arbitrary | _ <- [1..k]]
-  shrink = return . Arb.shrink
-
-instance StatefulArbitrary ArbState Char where
-  arbitrary = lift Arb.arbitrary
-  shrink = return . Arb.shrink
-
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (CaseClause a) where
-  arbitrary = soneof [caseclause, casedefault]
-    where caseclause = liftM3 CaseClause arbitrary arbitrary arbitrary
-          casedefault = liftM2 CaseDefault arbitrary arbitrary
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (CaseClause a) where
+  arbitrary = sized uniform
   shrink (CaseClause a expr stmts) = 
     [CaseClause na ne ns | na <- shrink a, ne <- shrink expr, ns <- shrink stmts]
   shrink (CaseDefault a stmts) = 
     [CaseDefault na ns | na <- shrink a, ns <- shrink stmts]
                          
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Prop a) where
-  arbitrary = soneof [liftM2 PropId arbitrary arbitrary
-                     ,liftM2 PropString arbitrary nonEmptyString
-                     ,liftM2 PropNum arbitrary nonNegative
-                     ]
+instance (Enumerable a, Arbitrary a) => Arbitrary (Prop a) where
+  arbitrary = sized uniform
   shrink (PropId a id) = [PropId na nid | nid <- shrink id, na <- shrink a] 
   shrink (PropString a s) = [PropString na ns | ns <- shrink s, na <- shrink a] 
   shrink (PropNum a i) = [PropNum na ni | ni <- shrink i, na <- shrink a] 
   
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (LValue a) where  
-  arbitrary = soneof [liftM2 LVar arbitrary identifier,
-                     liftM3 LDot arbitrary arbitrary identifier,
-                     liftM3 LBracket arbitrary arbitrary arbitrary]
+instance (Data a, Enumerable a, Arbitrary a) => Arbitrary (LValue a) where  
+  arbitrary = sized uniform
   shrink (LVar a s) = [LVar na ns | ns <- shrink s, na <- shrink a]
   shrink (LDot a e s) = [LDot na ne ns | ne <- shrink e, ns <-shrink s, na <-shrink a]
   shrink (LBracket a e1 e2) = [LBracket na ne1 ne2 | ne1 <- shrink e1, ne2 <-shrink e2, na <- shrink a]
   
-cshrink :: StatefulArbitrary ArbState a => [a] -> State s [a]
-cshrink = (liftM concat) . shrink
+cshrink :: Arbitrary a => [a] -> [a]
+cshrink = concat . shrink
 
-identifier :: StateT s Gen String
-identifier = lift $ sized sizedIdent
-    where sizedIdent :: Int -> Gen String
-          sizedIdent n = do s <- identStart
-                            rest <- identRest (n-1)
-                            return (s:rest)
-          identStart = arbitrary `suchThat` isIdentStart
-          identRest n | n < 1 = return ""
-          identRest n = do p <- identPart
-                           rest <- identRest (n-1)
-                           return (p:rest)
-          identPart = do arbitrary `suchThat` isIdentPart
-          isIdentStart c = isLetter c || c == '$' || c == '_'
-          isIdentPart c = isIdentStart c || isMark c || isNumber c
-
--- minimum size generator
-type MSGen a = (Int, Gen a)
-
-sGen :: [MSGen a] -> Gen a
-sGen gens = 
-  sized f 
-  where f n | n >= 0 = soneof $ map snd (filter (\(m, _) -> n >= m) gens)
-        f _          = f 0
-
-recursive :: Gen a -> Gen a
-recursive g = sized (\n -> resize (n-1) g)
-
-rarbitrary :: StatefulArbitrary ArbState a => Gen a
-rarbitrary = recursive arbitrary
-
-rrarbitrary :: StatefulArbitrary ArbState a => Gen a
-rrarbitrary = recursive $ recursive arbitrary
-
-atLeastOfSize :: StatefulArbitrary ArbState a => Int -> Gen a -> Gen a
-atLeastOfSize l gen = sized $ \s -> if s < l then resize l gen else gen
-
-listOfN :: StatefulArbitrary ArbState a => Int -> Gen a -> Gen [a]
-listOfN l gen = sized $ \n ->
-  let l' = l `max` 0
-  in do k <- choose (l', l' `max` n)
-        vectorOf k gen
-
-nonEmptyString :: Gen String
-nonEmptyString = sized $ \s -> if s < 1 then stringOfLength 1 else stringOfLength s
-
-regexpBody = nonEmptyString
-
-nonNegative :: (StatefulArbitrary ArbState a, Num a) => Gen a
-nonNegative = liftM abs arbitrary
-
-stringOfLength :: Int -> Gen String
-stringOfLength 0 = return ""
-stringOfLength n = do c <- arbitrary
-                      rs <- stringOfLength (n-1)
-                      return (c:rs)
-
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Expression a) where
-  arbitrary = 
-    sGen [(0, liftM  ThisRef arbitrary),
-          (0, liftM  NullLit arbitrary),
-          (0, liftM2 StringLit arbitrary arbitrary),
-          (0, liftM2 NumLit arbitrary nonNegative),
-          (0, liftM2 IntLit arbitrary nonNegative),
-          (0, liftM2 BoolLit arbitrary arbitrary),
-          (0, liftM4 RegexpLit arbitrary regexpBody arbitrary arbitrary),
-          (1, liftM2 ArrayLit arbitrary rarbitrary),
-          (1, liftM2 ObjectLit arbitrary rarbitrary),
-          (0, liftM2 VarRef arbitrary arbitrary),
-          (1, liftM3 DotRef arbitrary rarbitrary arbitrary),
-          (2, liftM3 BracketRef arbitrary rarbitrary rarbitrary),
-          (3, liftM3 NewExpr arbitrary rarbitrary rrarbitrary),
-          (1, liftM3 PrefixExpr arbitrary arbitrary rarbitrary),
-          (2, liftM3 UnaryAssignExpr arbitrary arbitrary rarbitrary),
-          (2, liftM4 InfixExpr arbitrary arbitrary rarbitrary rarbitrary),
-          (3, liftM4 CondExpr arbitrary rarbitrary rarbitrary rarbitrary),
-          (3, liftM4 AssignExpr arbitrary rarbitrary rarbitrary rarbitrary),
-          (3, liftM2 ListExpr arbitrary (recursive (listOfN 2 arbitrary))),
-          (3, liftM3 CallExpr arbitrary rarbitrary rrarbitrary),
-          (1, liftM4 FuncExpr arbitrary arbitrary arbitrary rarbitrary)]
-    
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (Expression a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (StringLit a s) = [StringLit na ns | na <- shrink a, ns <- shrink s]
   shrink (RegexpLit a s b1 b2) = [RegexpLit na ns nb1 nb2 | na <- shrink a, nb1 <- shrink b1, nb2 <- shrink b2, ns <- shrink s]
   shrink (NumLit a d) = [NumLit na nd | na <- shrink a, nd <- shrink d]
@@ -222,59 +107,27 @@ instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Expression 
   shrink (CallExpr a e es) = (shrink e) ++ [e] ++ (cshrink es) ++ es ++ [CallExpr na ne nes | na <- shrink a, ne <- shrink e, nes <- shrink es]
   shrink (FuncExpr a mid ids s) = [FuncExpr na nmid nids ns | na <- shrink a, nmid <-  shrink mid, nids <- shrink ids, ns <- shrink s]
 
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (ForInInit a) where
-  arbitrary = soneof [liftM ForInVar arbitrary,
-                     liftM ForInLVal arbitrary]
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (ForInInit a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (ForInVar id) = [ForInVar nid | nid <- shrink id]
   shrink (ForInLVal id) = [ForInLVal nid | nid <- shrink id]
   
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (ForInit a) where  
-  arbitrary = 
-    frequency [
-      (2, return NoInit),
-      (1, liftM VarInit arbitrary),
-      (1, liftM ExprInit arbitrary)]
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (ForInit a) where  
+  arbitrary = sized uniform >>= fixUp
   shrink (NoInit) = []
   shrink (VarInit vds) = [VarInit nvds | nvds <- shrink vds]
   shrink (ExprInit e) = [ExprInit ne | ne <- shrink e]
 
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (CatchClause a) where
-  arbitrary = liftM3 CatchClause arbitrary arbitrary arbitrary
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (CatchClause a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (CatchClause a id s) = [CatchClause na nid ns | na <- shrink a, nid <- shrink id, ns <- shrink s]
   
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (VarDecl a) where
-  arbitrary = liftM3 VarDecl arbitrary arbitrary arbitrary
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (VarDecl a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (VarDecl a id me) = [VarDecl na nid nme | na <- shrink a, nid <- shrink id, nme <- shrink me]
 
-instance StatefulArbitrary ArbState a => StatefulArbitrary ArbState (Statement a) where
-  arbitrary = 
-    sGen [(2, liftM2 BlockStmt arbitrary rrarbitrary),
-          (0, liftM  EmptyStmt arbitrary),
-          (1, liftM2 ExprStmt arbitrary rarbitrary),
-          (3, liftM4 IfStmt arbitrary rarbitrary rarbitrary rarbitrary),
-          (2, liftM3 IfSingleStmt arbitrary rarbitrary rarbitrary),
-          (3, liftM3 SwitchStmt arbitrary rarbitrary rrarbitrary),
-          (2, liftM3 WhileStmt arbitrary rarbitrary rarbitrary),
-          (2, liftM3 DoWhileStmt arbitrary rarbitrary rarbitrary),
-          (0, liftM2 BreakStmt arbitrary arbitrary),
-          (0, liftM2 ContinueStmt arbitrary arbitrary),
-          (1, liftM3 LabelledStmt arbitrary arbitrary rarbitrary),
-          (3, liftM4 ForInStmt arbitrary rarbitrary rarbitrary rarbitrary),
-          (4, liftM5 ForStmt arbitrary rarbitrary rarbitrary rarbitrary rarbitrary),
-          (4, arbtry),
-          (1, liftM2 ThrowStmt arbitrary rarbitrary),
-          (1, liftM2 ReturnStmt arbitrary rarbitrary),
-          (2, liftM3 WithStmt arbitrary rarbitrary rarbitrary),
-          (2, liftM2 VarDeclStmt arbitrary (listOf1 rrarbitrary)),
-          (1, liftM4 FunctionStmt arbitrary arbitrary arbitrary rarbitrary)]
-    where arbtry = 
-            do (mCatch, mFinally) <- soneof [liftM2 (,) (return Nothing) (liftM Just rarbitrary),
-                                            liftM2 (,) (liftM Just rarbitrary) (return Nothing),
-                                            liftM2 (,) (liftM Just rarbitrary) (liftM Just rarbitrary)]
-               a <- arbitrary                      
-               body <- rarbitrary
-               return $ TryStmt a body mCatch mFinally
-    
+instance (Enumerable a, Arbitrary a, Data a) => Arbitrary (Statement a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (BlockStmt a body) = emptyStmtShrink a ++ 
                               [BlockStmt as bs | as <- shrink a, bs <- shrink body]
   shrink (EmptyStmt a) = emptyStmtShrink a
@@ -318,20 +171,185 @@ emptyStmtShrink a = [EmptyStmt a2 | a2 <- shrink a]
 type LabelSubst   = Map (Id ()) (Id ())
 emptyConstantPool = Data.Map.empty
 
-instance (Data a, StatefulArbitrary ArbState a) => StatefulArbitrary ArbState (JavaScript a) where
-  arbitrary = do {s <- liftM2 Script arbitrary arbitrary;
-                  if isProgramFixable s then fixLabels s
-                  else arbitrary}
+instance (Data a, Arbitrary a, Enumerable a) => Arbitrary (JavaScript a) where
+  arbitrary = sized uniform >>= fixUp
   shrink (Script a ss) = [Script na nss | na <- shrink a, nss <- shrink ss]
-  
--- | Fixes labels so that labeled breaks and continues refer to
--- existing labeled statements, enclosing them; also, reduces the size
--- of the label set. Assumes that the program has a proper syntactic
--- structure, i.e. 'isProgramFixable' s = True.
-fixLabels :: (Data a) => JavaScript a -> Gen (JavaScript a)
-fixLabels s = 
-  fixBreakContinueLabels s >>= removeDuplicateLabels
+
+
+-- | A class of AST elements that need fixup after generation
+class Fixable a where
+  fixUp :: a -> Gen a
+
+instance (Data a) => Fixable (JavaScript a) where
+  fixUp (Script a ss) = (liftM (Script a) (fixBreakContinue ss))
+                     >>=transformBiM (return . identifierFixup
+                                      :: Id a -> Gen (Id a))
+                     >>=transformBiM (fixUpFunExpr
+                                      :: Expression a -> Gen (Expression a))
+                     >>=transformBiM (fixUpFunStmt
+                                      :: Statement a -> Gen (Statement a))
+                     >>=transformBiM (return . fixLValue
+                                      :: LValue a -> Gen (LValue a))
+
+instance (Data a) => Fixable (Expression a) where
+  fixUp = (fixUpFunExpr . transformBi (identifierFixup :: Id a -> Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
           
+instance (Data a) => Fixable (Statement a) where
+  fixUp = (fixUpFunStmt . transformBi (identifierFixup :: Id a -> Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+
+instance (Data a) => Fixable (CaseClause a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+
+instance (Data a) => Fixable (CatchClause a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+          
+instance (Data a) => Fixable (ForInit a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+          
+instance (Data a) => Fixable (ForInInit a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+          
+instance (Data a) => Fixable (VarDecl a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+
+instance Fixable (Id a) where
+  fixUp = return . identifierFixup
+
+instance (Data a) => Fixable (Prop a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+
+instance (Data a) => Fixable (LValue a) where
+  fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
+       >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
+       >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
+       >=>(return . fixLValue)
+
+fixLValue :: LValue a -> LValue a
+fixLValue lv = case lv of
+  LVar a n -> LVar a $ identifierNameFixup n
+  LDot a o n -> LDot a o $ identifierNameFixup n
+  LBracket {} -> lv
+
+fixUpFunExpr :: (Data a) => Expression a -> Gen (Expression a)
+fixUpFunExpr e = case e of
+  FuncExpr a mid params body -> liftM (FuncExpr a mid params) $ fixBreakContinue body
+  _ -> return e
+
+fixUpFunStmt :: (Data a) => Statement a -> Gen (Statement a)
+fixUpFunStmt s = case s of
+  FunctionStmt a id params body -> liftM (FunctionStmt a id params) $ fixBreakContinue body
+  _ -> return s
+
+identifierFixup :: Id a -> Id a
+identifierFixup (Id a n) = Id a $ identifierNameFixup n
+
+-- | Renames empty identifiers, as well as identifiers that are
+-- keywords or future reserved words by prepending a '_' to them
+identifierNameFixup :: String -> String
+identifierNameFixup name = if isValidIdentifierName name then name
+                           else '_':name
+
+-- | Fixes an incorrect nesting of break/continue, making the program
+-- abide by the ECMAScript spec (page 92): any continue without a
+-- label should be nested within an iteration stmt, any continue with
+-- a label should be nested in a labeled statement (not necessarily
+-- with the same label); any break statement without a label should be
+-- nested in an iteration or switch stmt, any break statement with a
+-- label should be nested in a labeled statement (not necessarily with
+-- the same label). This is done by either assigning a label (from the
+-- set of labels in current scope) to a break/continue statement that
+-- doesn't have one (or has a label that's not present in the current
+-- scope). Additionally, it removes nested labelled statements with
+-- duplicate labels (also a requirement imposed by the spec).
+fixBreakContinue :: (Data a) => [Statement a] -> Gen [Statement a]
+fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
+    where
+      fixBC :: Data a => Statement a -> StateT ([String], [EnclosingStatement]) Gen (Statement a)
+      fixBC stmt@(LabelledStmt a lab s) =
+        do labs <- gets fst
+           if (unId lab) `elem` labs
+              -- if duplicate label, delete the current statement (but
+              -- keep it's child statement)
+              then descendM fixBC stmt
+              else liftM (LabelledStmt a lab) $ descendM fixBC s
+      fixBC stmt@(BreakStmt a mlab) =
+        do encls <- gets snd
+           case mlab of
+             Nothing  -> if or $ map isIterSwitch encls then return stmt
+                         -- if none of the enclosing statements is an
+                         -- iteration or switch statement, substitute
+                         -- the break statement for an empty statement
+                         else return $ EmptyStmt a
+             Just lab@(Id b _) ->
+               if any (elem (unId lab) . getLabelSet) encls
+               then return stmt
+               else if not $ and $ map isIterSwitch encls
+                       -- if none of the enclosing statements is an
+                       -- iteration or switch statement, substitute
+                       -- the break statement for an empty statement
+                    then return $ EmptyStmt a
+                    else case concatMap getLabelSet encls of
+                      -- if none of the enclosing statements have
+                      -- labels, remove the label from the break
+                      -- statement
+                      [] -> return $ BreakStmt a Nothing
+                      -- if some of them have labels, add the first
+                      -- label to the break statement
+                      ls -> do newLab <- lift $ selectRandomElement ls
+                               return $ BreakStmt a (Just $ Id b newLab)
+      fixBC stmt@(ContinueStmt a mlab) =
+        do encls <- gets snd
+           let enIts = filter isIter encls
+           case mlab of
+             Nothing  -> if not $ null enIts  then return stmt
+                         -- if none of the enclosing statements are
+                         -- iteration statements, substitute the
+                         -- continue statement for an empty statement
+                         else return $ EmptyStmt a
+             Just lab@(Id b _) ->
+               if any (elem (unId lab) . getLabelSet) enIts
+               then return stmt
+               else case concatMap getLabelSet enIts of
+                      -- if none of the enclosing statements have
+                      -- labels, remove the label from the continue
+                      -- statement
+                      [] -> if not $ null enIts then return $ ContinueStmt a Nothing
+                            -- if none of the enclosing statements are
+                            -- iteration statements, substitute the
+                            -- continue statement for an empty
+                            -- statement
+                            else return $ EmptyStmt a
+                            -- if some of them have labels, add the first
+                            -- label to the break statement
+                      ls -> do newLab <- lift $ selectRandomElement ls
+                               return $ ContinueStmt a (Just $ Id b newLab)
+      fixBC s = descendM fixBC s
+
 -- | choose n elements from a list randomly
 rChooseElem :: [a] -> Int -> Gen [a]
 rChooseElem xs n | n > 0 && (not $ null xs) = 
@@ -339,62 +357,6 @@ rChooseElem xs n | n > 0 && (not $ null xs) =
   else (vectorOf n $ choose (0, n-1)) >>=
        (\subst -> return $ foldr (\n ys -> (xs!!n):ys) [] subst)
 rChooseElem _  _ = return [] 
-
--- | A predicate that tells us whether a program has a fixable/correct
--- label-break/continue structure.  The predicate imposes syntactic
--- restrictions on the break, continue and labeled statements as in
--- the ECMA spec
-isProgramFixable :: (Data a ) => JavaScript a -> Bool
-isProgramFixable (Script _ stmts) = 
-  Prelude.and $ 
-  Prelude.map 
-             (\stmt -> isBreakContinueFixable stmt False False False) 
-             stmts
-
--- | Imposes relaxed restrictions on break and continue per ECMAScript
--- 5 spec (page 92): any continue without a label should be nested
--- within an iteration stmt, any continue with a label should be
--- nested in a labeled statement (not necessarily with the same
--- label); any break statement without a label should be nested in an
--- iteration or switch stmt, any break statement with a label should
--- be nested in a labeled statement (not necessarily with the same
--- label).
-isBreakContinueFixable :: (Data a) => Statement a -> 
-                                      Bool -> 
-                                      Bool -> 
-                                      Bool ->
-                                      Bool
-isBreakContinueFixable stmt inLabeled inIter inSwitch =
-  case stmt of
-    ContinueStmt _ Nothing -> inIter
-    ContinueStmt _ (Just label) -> inLabeled
-    BreakStmt    _ Nothing -> inIter || inSwitch
-    BreakStmt    _ (Just label) -> inLabeled
-    LabelledStmt _ label _ -> 
-      continue stmt True inIter inSwitch
-    _ -> if isIterationStmt stmt then
-             continue stmt inLabeled True inSwitch
-         else if isSwitchStmt stmt then
-                  continue stmt inLabeled inIter True 
-              else True
-  --  _ -> continue stmt inLabeled inIter inSwitch
-  where continue stmt inLabeled inIter inSwitch =
-          and $ map (\s -> isBreakContinueFixable s inLabeled inIter inSwitch) (children stmt)
-                   
--- | Removes duplicate labels from nested labeled statements in order
--- to impose restrictions on labeled statements as per ECMAScript 5
--- spec (page 95): nested labeled statements cannot have duplicating
--- labels.
-removeDuplicateLabels :: Data a => JavaScript a -> Gen (JavaScript a)
-removeDuplicateLabels (Script x stmts) =
-    return $ Script x (map (\stmt -> (evalState (transformM removeDL stmt) [])) stmts)
-    where
-      removeDL :: Statement a -> State [String] (Statement a)
-      removeDL stmt@(LabelledStmt x lab s) = 
-          do {enclosingLabels <- get;
-              if Prelude.elem (unId lab) enclosingLabels then return s
-              else modify ((:) $ unId lab) >> return stmt}
-      removeDL s = return s        
       
 -- | Selects a random element of the list
 selectRandomElement :: [a] -> Gen a
@@ -402,30 +364,6 @@ selectRandomElement xs =
   let l = length xs in
   do n <- arbitrary
      return $ xs !! (n `mod` l - 1)
--- | Changes labels of break/continue so that they refer to one of the
--- enclosing labels
-fixBreakContinueLabels :: Data a => JavaScript a -> Gen (JavaScript a)
-fixBreakContinueLabels (Script x stmts) =
-  do stmts2 <- mapM (\stmt -> (evalStateT (fixBCL stmt) [])) stmts
-     return $ Script x stmts2
-    where
-      fixBCL :: Data a => Statement a -> StateT [String] Gen (Statement a)
-      fixBCL stmt@(LabelledStmt _ lab s) =
-        do modify ((:) $ unId lab)
-           descendM fixBCL stmt
-      fixBCL stmt@(BreakStmt x (Just (Id y lab))) =
-          do {labels <- get;
-              if lab `notElem` labels then
-                  do {newLab <- lift $ selectRandomElement labels;
-                      return $ BreakStmt x (Just $ Id y newLab)}
-              else return stmt}
-      fixBCL stmt@(ContinueStmt x (Just (Id y lab))) =
-          do {labels <- get;
-              if lab `notElem` labels then
-                  do {newLab <- lift $ selectRandomElement labels;
-                      return $ ContinueStmt x (Just $ Id y newLab)}
-              else return stmt}
-      fixBCL s = return s
 
 isSwitchStmt :: Statement a    -> Bool
 isSwitchStmt (SwitchStmt _ _ _) = True

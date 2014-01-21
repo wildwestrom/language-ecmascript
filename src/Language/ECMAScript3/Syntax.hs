@@ -26,6 +26,13 @@ module Language.ECMAScript3.Syntax (JavaScript(..)
                                    ,SourcePos
                                    ,isValid
                                    ,isValidIdentifier
+                                   ,isValidIdentifierName
+                                   ,EnclosingStatement(..)
+                                   ,pushLabel
+                                   ,pushEnclosing
+                                   ,HasLabelSet (..)
+                                   ,isIter
+                                   ,isIterSwitch
                                    ) where
 
 import Text.Parsec.Pos(initialPos,SourcePos) -- used by data JavaScript
@@ -280,7 +287,7 @@ isValid :: forall a. (Data a, Typeable a) => JavaScript a -> Bool
 isValid js = checkIdentifiers js && checkBreakContinueLabels js
   where checkIdentifiers :: (Data a, Typeable a) => JavaScript a -> Bool
         checkIdentifiers js =
-          and $ map isValidIdentifier $
+          and $ map isValidIdentifierName $
           [n | (Id _ n) :: Id a <- universeBi js] ++
           [n | (LVar _ n) :: LValue a <- universeBi js] ++
           [n | (LDot _ _ n) :: LValue a <- universeBi js]
@@ -304,7 +311,10 @@ checkStmtM stmt = case stmt of
     return $ case mlab of
       Nothing  -> any isIterSwitch encls
       Just lab -> any (elem (unId lab) . getLabelSet) encls
-  LabelledStmt _ lab s -> pushLabel lab $ checkStmtM s
+  LabelledStmt _ lab s -> do
+    labs <- gets fst
+    if (unId lab) `elem` labs then return False
+      else pushLabel lab $ checkStmtM s
   WhileStmt _ _ s   -> iterCommon s
   DoWhileStmt _ s _ -> iterCommon s
   ForStmt _ _ _ _ s -> iterCommon s
@@ -321,13 +331,13 @@ checkStmtM stmt = case stmt of
 
 iterCommon s = pushEnclosing EnclosingIter $ checkStmtM s
 
-pushEnclosing :: ([Label] -> EnclosingStatement)
-              -> State ([Label], [EnclosingStatement]) a
-              -> State ([Label], [EnclosingStatement]) a
+pushEnclosing :: Monad m => ([Label] -> EnclosingStatement)
+              -> StateT ([Label], [EnclosingStatement]) m a
+              -> StateT ([Label], [EnclosingStatement]) m a
 pushEnclosing ctor = bracketState (\(labs, encls) -> ([], ctor labs:encls))
 
-pushLabel :: Id b -> State ([Label], [EnclosingStatement]) a
-          -> State ([Label], [EnclosingStatement]) a
+pushLabel :: Monad m => Id b -> StateT ([Label], [EnclosingStatement]) m a
+          -> StateT ([Label], [EnclosingStatement]) m a
 pushLabel l = bracketState (first (unId l:))
 
 checkCaseM c = let ss = case c of
@@ -337,7 +347,7 @@ checkCaseM c = let ss = case c of
 
 checkCatchM (CatchClause _ _ body) = checkStmtM body
 
-bracketState :: (s -> s) -> State s a -> State s a
+bracketState :: Monad m => (s -> s) -> StateT s m a -> StateT s m a
 bracketState f m = do original <- get
                       modify f
                       rv <- m
@@ -345,11 +355,12 @@ bracketState f m = do original <- get
                       return rv
 
 -- | Checks if an identifier name is valid according to the spec
-isValidIdentifier :: String -> Bool
-isValidIdentifier id = case id of
-  "" -> False
-  (c:cs) -> validIdStart c && and (map validIdPart cs) && id `notElem` reservedWords
-  where reservedWords = keyword ++ futureReservedWord ++ null ++ boolLit
+isValidIdentifier :: Id a -> Bool
+isValidIdentifier (Id _ name) = isValidIdentifierName name
+
+isValidIdentifierName :: String -> Bool
+isValidIdentifierName name = (not $ null name) && name `notElem` reservedWords
+  where reservedWords = keyword ++ futureReservedWord ++ nullKw ++ boolLit
         keyword = ["break", "case", "catch", "continue", "default", "delete"
                   ,"do", "else", "finally", "for", "function", "if", "in"
                   ,"instanceof", "new", "return", "switch", "this", "throw"
@@ -360,27 +371,8 @@ isValidIdentifier id = case id of
                              ,"interface", "long", "native", "package", "private"
                              ,"protected", "short", "static", "super"
                              ,"synchronized", "throws", "transient", "volatile"]
-        null = ["null"]
+        nullKw = ["null"]
         boolLit = ["true", "false"]
-        validIdStart c = unicodeLetter c
-                      || c == '$'
-                      || c == '_'
-        validIdPart c = validIdStart c
-                     || validIdPartUnicode c
-        unicodeLetter c = case generalCategory c of
-          UppercaseLetter -> True
-          LowercaseLetter -> True
-          TitlecaseLetter -> True
-          ModifierLetter  -> True
-          OtherLetter     -> True
-          LetterNumber    -> True
-          _               -> False
-        validIdPartUnicode c = case generalCategory c of
-          NonSpacingMark       -> True
-          SpacingCombiningMark -> True
-          DecimalNumber        -> True
-          ConnectorPunctuation -> True
-          _                    -> False
           
 data EnclosingStatement = EnclosingIter [Label]
                           -- ^ The enclosing statement is an iteration statement
