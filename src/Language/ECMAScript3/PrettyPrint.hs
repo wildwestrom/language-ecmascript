@@ -11,10 +11,14 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
 import Text.PrettyPrint.HughesPJ
 import Language.ECMAScript3.Syntax
 import Prelude hiding (maybe, id)
+import Data.Char
+import Numeric
 
 {-# DEPRECATED PP, javaScript, renderStatements, renderExpression "These interfaces are outdated and would be removed/hidden in version 1.0. Use the Pretty class instead." #-}
 
--- | A class of pretty-printable ECMAScript AST nodes.
+-- | A class of pretty-printable ECMAScript AST nodes. Will
+-- pretty-print correct JavaScript given that the 'isValid' predicate
+-- holds for the AST.
 class Pretty a where
   -- | Pretty-print an ECMAScript AST node. Use 'render' or 'show' to
   -- convert 'Doc' to 'String'.
@@ -102,8 +106,8 @@ instance Pretty (ForInInit a) where
 
 instance Pretty (LValue a) where 
   prettyPrint lv = case lv of
-    LVar _ x -> text x
-    LDot _ e x -> ppMemberExpression e <> text "." <> text x
+    LVar _ x -> printIdentifierName x
+    LDot _ e x -> ppMemberExpression e <> text "." <> printIdentifierName x
     LBracket _ e1 e2 -> ppMemberExpression e1 <> 
                         brackets (ppExpression True e2)
 
@@ -174,7 +178,7 @@ instance Pretty (Prop a) where
     PropNum _ n -> text (show n)
 
 instance Pretty (Id a) where
-  prettyPrint (Id _ str) = text str
+  prettyPrint (Id _ str) = printIdentifierName str
 
 class PP a where 
   pp :: a -> Doc
@@ -211,6 +215,44 @@ ppVarDecl hasIn vd = case vd of
   VarDecl _ id Nothing  -> prettyPrint id
   VarDecl _ id (Just e) -> prettyPrint id <+> equals
                            <+> ppAssignmentExpression hasIn e
+
+-- | Pretty prints a string assuming it's used as an
+-- identifier. Escapes characters that are disallowed by the grammar
+-- with unicode escape sequences, so that the resulting program can be
+-- parsed later. Note that it does not (and could not) do anything
+-- about identifier names that are reserved words as well as empty
+-- identifier names.
+printIdentifierName :: String -> Doc
+printIdentifierName = text . adapt 
+  where adapt [] = []
+        adapt (c:cs) = (adaptStart c) ++ (concatMap adaptRest cs)
+        adaptStart c = if validIdStart c then [c]
+                       else unicodeEscape c
+        adaptRest c = if validIdPart c then [c]
+                      else unicodeEscape c
+        validIdStart c = unicodeLetter c
+                      || c == '$'
+                      || c == '_'
+        validIdPart c = validIdStart c
+                     || validIdPartUnicode c
+        unicodeLetter c = case generalCategory c of
+          UppercaseLetter -> True
+          LowercaseLetter -> True
+          TitlecaseLetter -> True
+          ModifierLetter  -> True
+          OtherLetter     -> True
+          LetterNumber    -> True
+          _               -> False
+        validIdPartUnicode c = case generalCategory c of
+          NonSpacingMark       -> True
+          SpacingCombiningMark -> True
+          DecimalNumber        -> True
+          ConnectorPunctuation -> True
+          _                    -> False
+        -- escapes a given character converting it into a 16-bit
+        -- unicode escape sequence
+        unicodeEscape :: Char -> String
+        unicodeEscape c = "\\u" ++ showHex (ord c) ""
 
 -- Based on:
 --   http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Guide:Literals
