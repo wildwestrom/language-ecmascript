@@ -493,9 +493,9 @@ parseObjectLit =
         return (name,val)
       toInt eid = case eid of
         Left i -> return $ fromIntegral i
+        -- Note, the spec actually allows floats in property names.
+        -- This is left for legacy reasons and will be fixed in 1.0
         Right d-> unexpected "Floating point number in property name"
-                  -- ^ Note, the spec actually allows floats in property names.
-                  -- This is left for legacy reasons and will be fixed in 1.0
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
           return $ ObjectLit pos props
