@@ -1,5 +1,13 @@
 Version change log.
 
+=0.16=
+Rewritten the Arbitrary instances using 'testing-feat'. Adjusted the
+pretty-printer to escape invalid characters in identifier names
+automatically (better usability for code generation use-cases). Added an
+'isValid' predicate to check the validity of the AST. Note that the
+pretty-printer is guaranteed to produce syntactically correct code only
+for valid ASTs.
+
 =0.15.3=
 Ported the pretty printer to use 'wl-pprint' instead of
 'pretty'. Pretty-printed code is now more compact and resembles common

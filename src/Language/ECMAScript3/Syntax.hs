@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Language.ECMAScript3.Syntax (JavaScript(..)
                                    ,unJavaScript
                                    ,Statement(..)
@@ -23,6 +24,15 @@ module Language.ECMAScript3.Syntax (JavaScript(..)
                                    ,UnaryAssignOp(..)
                                    ,LValue (..)
                                    ,SourcePos
+                                   ,isValid
+                                   ,isValidIdentifier
+                                   ,isValidIdentifierName
+                                   ,EnclosingStatement(..)
+                                   ,pushLabel
+                                   ,pushEnclosing
+                                   ,HasLabelSet (..)
+                                   ,isIter
+                                   ,isIterSwitch
                                    ) where
 
 import Text.Parsec.Pos(initialPos,SourcePos) -- used by data JavaScript
@@ -31,6 +41,10 @@ import Data.Typeable (Typeable)
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 import Data.Default.Class
+import Data.Generics.Uniplate.Data
+import Data.Char
+import Control.Monad.State
+import Control.Arrow
 
 data JavaScript a
   -- |A script in \<script\> ... \</script\> tags.
@@ -239,3 +253,167 @@ isIterationStmt s = case s of
   ForInStmt {} -> True
   _                 -> False
   
+-- | The ECMAScript standard defines certain syntactic restrictions on
+-- programs (or, more precisely, statements) that aren't easily
+-- enforced in the AST datatype. These restrictions have to do with
+-- labeled statements and break/continue statement, as well as
+-- identifier names. Thus, it is possible to manually generate AST's
+-- that correspond to syntactically incorrect programs. Use this
+-- predicate to check if an 'JavaScript' AST corresponds to a
+-- syntactically correct ECMAScript program.
+isValid :: forall a. (Data a, Typeable a) => JavaScript a -> Bool
+-- =From ECMA-262-3=
+-- A program is considered syntactically incorrect if either of the
+-- following is true:
+-- * The program contains a continue statement without the optional
+-- Identifier, which is not nested, directly or indirectly (but not
+-- crossing function boundaries), within an IterationStatement.
+-- * The program contains a continue statement with the optional
+-- Identifier, where Identifier does not appear in the label set of an
+-- enclosing (but not crossing function boundaries) IterationStatement.
+-- * The program contains a break statement without the optional
+-- Identifier, which is not nested, directly or indirectly (but not
+-- crossing function boundaries), within an IterationStatement or a
+-- SwitchStatement.
+-- * The program contains a break statement with the optional
+-- Identifier, where Identifier does not appear in the label set of an
+-- enclosing (but not crossing function boundaries) Statement.
+-- * The program contains a LabelledStatement that is enclosed by a
+-- LabelledStatement with the same Identifier as label. This does not
+-- apply to labels appearing within the body of a FunctionDeclaration
+-- that is nested, directly or indirectly, within a labelled
+-- statement.
+-- * The identifiers should be valid. See spec 7.6
+isValid js = checkIdentifiers js && checkBreakContinueLabels js
+  where checkIdentifiers :: (Data a, Typeable a) => JavaScript a -> Bool
+        checkIdentifiers js =
+          and $ map isValidIdentifierName $
+          [n | (Id _ n) :: Id a <- universeBi js] ++
+          [n | (LVar _ n) :: LValue a <- universeBi js] ++
+          [n | (LDot _ _ n) :: LValue a <- universeBi js]
+        checkBreakContinueLabels js@(Script _ body) = and $ map checkStmt $
+           body ++ concat ([body | FuncExpr _ _ _ body <- universeBi js] ++
+                           [body | FunctionStmt _ _ _ body <- universeBi js])
+
+checkStmt :: Statement a -> Bool
+checkStmt s = evalState (checkStmtM s) ([], [])
+
+checkStmtM :: Statement a -> State ([Label], [EnclosingStatement]) Bool
+checkStmtM stmt = case stmt of
+  ContinueStmt a mlab -> do
+    encls <- gets snd
+    let enIts = filter isIter encls
+    return $ case mlab of
+      Nothing  -> not $ null enIts
+      Just lab -> any (elem (unId lab) . getLabelSet) enIts
+  BreakStmt a mlab -> do
+    encls <- gets snd
+    return $ case mlab of
+      Nothing  -> any isIterSwitch encls
+      Just lab -> any (elem (unId lab) . getLabelSet) encls
+  LabelledStmt _ lab s -> do
+    labs <- gets fst
+    if (unId lab) `elem` labs then return False
+      else pushLabel lab $ checkStmtM s
+  WhileStmt _ _ s   -> iterCommon s
+  DoWhileStmt _ s _ -> iterCommon s
+  ForStmt _ _ _ _ s -> iterCommon s
+  ForInStmt _ _ _ s -> iterCommon s
+  SwitchStmt _ _ cs -> pushEnclosing EnclosingSwitch $ liftM and $ mapM checkCaseM cs
+  BlockStmt _ ss -> pushEnclosing EnclosingOther $ liftM and $ mapM checkStmtM ss
+  IfStmt _ _ t e -> liftM2 (&&) (checkStmtM t) (checkStmtM e)
+  IfSingleStmt _ _ t -> checkStmtM t
+  TryStmt _ body mcatch mfinally -> liftM2 (&&) (checkStmtM body) $
+    liftM2 (&&) (maybe (return True) checkCatchM mcatch)
+                (maybe (return True) checkStmtM mfinally)
+  WithStmt _ _ body -> checkStmtM body
+  _ -> return True
+
+iterCommon s = pushEnclosing EnclosingIter $ checkStmtM s
+
+pushEnclosing :: Monad m => ([Label] -> EnclosingStatement)
+              -> StateT ([Label], [EnclosingStatement]) m a
+              -> StateT ([Label], [EnclosingStatement]) m a
+pushEnclosing ctor = bracketState (\(labs, encls) -> ([], ctor labs:encls))
+
+pushLabel :: Monad m => Id b -> StateT ([Label], [EnclosingStatement]) m a
+          -> StateT ([Label], [EnclosingStatement]) m a
+pushLabel l = bracketState (first (unId l:))
+
+checkCaseM c = let ss = case c of
+                     CaseClause _ _ body -> body
+                     CaseDefault _ body -> body
+               in liftM and $ mapM checkStmtM ss
+
+checkCatchM (CatchClause _ _ body) = checkStmtM body
+
+bracketState :: Monad m => (s -> s) -> StateT s m a -> StateT s m a
+bracketState f m = do original <- get
+                      modify f
+                      rv <- m
+                      put original
+                      return rv
+
+-- | Checks if an identifier name is valid according to the spec
+isValidIdentifier :: Id a -> Bool
+isValidIdentifier (Id _ name) = isValidIdentifierName name
+
+isValidIdentifierName :: String -> Bool
+isValidIdentifierName name = (not $ null name) && name `notElem` reservedWords
+  where reservedWords = keyword ++ futureReservedWord ++ nullKw ++ boolLit
+        keyword = ["break", "case", "catch", "continue", "default", "delete"
+                  ,"do", "else", "finally", "for", "function", "if", "in"
+                  ,"instanceof", "new", "return", "switch", "this", "throw"
+                  ,"try", "typeof", "var", "void", "while", "with"]
+        futureReservedWord = ["abstract", "boolean", "byte", "char", "class"
+                             ,"const", "debugger", "enum", "export", "extends"
+                             ,"final", "float", "goto", "implements", "int"
+                             ,"interface", "long", "native", "package", "private"
+                             ,"protected", "short", "static", "super"
+                             ,"synchronized", "throws", "transient", "volatile"]
+        nullKw = ["null"]
+        boolLit = ["true", "false"]
+          
+data EnclosingStatement = EnclosingIter [Label]
+                          -- ^ The enclosing statement is an iteration statement
+                        | EnclosingSwitch [Label]
+                          -- ^ The enclosing statement is a switch statement
+                        | EnclosingOther [Label]
+                          -- ^ The enclosing statement is some other
+                          -- statement.  Note, `EnclosingOther` is
+                          -- never pushed if the current `labelSet` is
+                          -- empty, so the list of labels in this
+                          -- constructor should always be non-empty
+
+instance Show EnclosingStatement where
+  show (EnclosingIter ls) = "iteration" ++ show ls
+  show (EnclosingSwitch ls) = "switch" ++ show ls
+  show (EnclosingOther ls) = "statement" ++ show ls
+
+isIter :: EnclosingStatement -> Bool
+isIter (EnclosingIter _) = True
+isIter _                 = False
+
+isIterSwitch :: EnclosingStatement -> Bool
+isIterSwitch (EnclosingIter _)   = True
+isIterSwitch (EnclosingSwitch _) = True
+isIterSwitch _                   = False
+
+class HasLabelSet a where
+  getLabelSet :: a -> [Label]
+  setLabelSet :: [Label] -> a -> a
+
+modifyLabelSet :: HasLabelSet a => ([Label] -> [Label]) -> a -> a
+modifyLabelSet f a = setLabelSet (f $ getLabelSet a) a
+
+instance HasLabelSet EnclosingStatement where
+  getLabelSet e = case e of
+    EnclosingIter ls   -> ls
+    EnclosingSwitch ls -> ls
+    EnclosingOther ls  -> ls
+  setLabelSet ls e = case e of
+    EnclosingIter _   -> EnclosingIter ls
+    EnclosingSwitch _ -> EnclosingSwitch ls
+    EnclosingOther _  -> EnclosingOther ls
+
+type Label = String

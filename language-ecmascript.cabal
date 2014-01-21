@@ -1,5 +1,5 @@
 Name:           language-ecmascript
-Version:        0.15.3
+Version:        0.16
 Cabal-Version:	>= 1.10
 Copyright:      (c) 2007-2012 Brown University, (c) 2008-2010 Claudiu Saftoiu,
                 (c) 2012-2013 Stevens Institute of Technology
@@ -29,7 +29,7 @@ Source-repository head
 Source-repository this
    type: git
    location: git://github.com/jswebtools/language-ecmascript.git
-   tag: 0.15.3
+   tag: 0.16
 
 Library
   Hs-Source-Dirs:
@@ -44,7 +44,8 @@ Library
     data-default-class >= 0.0.1 && < 0.1,
     QuickCheck >= 2.5 && < 2.7,
     template-haskell >= 2.8 && < 2.9,
-    Diff == 0.3.*
+    Diff == 0.3.*,
+    testing-feat >= 0.4 && < 0.5
   ghc-options:
     -fwarn-incomplete-patterns
   Exposed-Modules:
@@ -74,6 +75,7 @@ Test-Suite test
     Test.Diff
     Test.Unit
     Test.Pretty
+    Test.Arbitrary
   Build-Depends:
     base >= 4 && < 5,
     mtl >= 1 && < 3,
