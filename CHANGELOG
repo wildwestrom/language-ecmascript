@@ -3,8 +3,8 @@ Version change log.
 =0.16=
 Rewritten the Arbitrary instances using 'testing-feat'. Adjusted the
 pretty-printer to escape invalid characters in identifier names
-automatically (better usability for code generation use-cases). Added an
-'isValid' predicate to check the validity of the AST. Note that the
+automatically, which gives better usability in code generation use-cases.
+Added an 'isValid' predicate to check the validity of the AST. Note that the
 pretty-printer is guaranteed to produce syntactically correct code only
 for valid ASTs.
 
