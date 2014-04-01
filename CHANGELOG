@@ -1,5 +1,11 @@
 Version change log.
 
+=0.16.1=
+Removed unicode-escaping of illegal identifier characters in the
+pretty-printer. Adjusted the isValid predicate to check for illegal
+characters identifiers. Adjusted the Arbitrary instance to only produce
+valid identifier names.
+
 =0.16=
 Rewritten the Arbitrary instances using 'testing-feat'. Adjusted the
 pretty-printer to escape invalid characters in identifier names
