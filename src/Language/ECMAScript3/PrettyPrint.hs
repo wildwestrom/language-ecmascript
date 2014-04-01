@@ -249,43 +249,12 @@ ppVarDecl hasIn vd = case vd of
   VarDecl _ id (Just e) -> prettyPrint id <+> equals
                            <+> ppAssignmentExpression hasIn e
 
--- | Pretty prints a string assuming it's used as an
--- identifier. Escapes characters that are disallowed by the grammar
--- with unicode escape sequences, so that the resulting program can be
--- parsed later. Note that it does not (and could not) do anything
--- about identifier names that are reserved words as well as empty
--- identifier names.
+-- | Pretty prints a string assuming it's used as an identifier. Note
+-- that per Spec 7.6 unicode escape sequences representing illegal
+-- identifier characters are not allowed as well, so we do not
+-- unicode-escape illegal characters in identifiers anymore.
 printIdentifierName :: String -> Doc
-printIdentifierName = text . adapt 
-  where adapt [] = []
-        adapt (c:cs) = (adaptStart c) ++ (concatMap adaptRest cs)
-        adaptStart c = if validIdStart c then [c]
-                       else unicodeEscape c
-        adaptRest c = if validIdPart c then [c]
-                      else unicodeEscape c
-        validIdStart c = unicodeLetter c
-                      || c == '$'
-                      || c == '_'
-        validIdPart c = validIdStart c
-                     || validIdPartUnicode c
-        unicodeLetter c = case generalCategory c of
-          UppercaseLetter -> True
-          LowercaseLetter -> True
-          TitlecaseLetter -> True
-          ModifierLetter  -> True
-          OtherLetter     -> True
-          LetterNumber    -> True
-          _               -> False
-        validIdPartUnicode c = case generalCategory c of
-          NonSpacingMark       -> True
-          SpacingCombiningMark -> True
-          DecimalNumber        -> True
-          ConnectorPunctuation -> True
-          _                    -> False
-        -- escapes a given character converting it into a 16-bit
-        -- unicode escape sequence
-        unicodeEscape :: Char -> String
-        unicodeEscape c = "\\u" ++ showHex (ord c) ""
+printIdentifierName = text
 
 -- Based on:
 --   http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Guide:Literals

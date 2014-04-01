@@ -267,10 +267,17 @@ identifierFixup :: Id a -> Id a
 identifierFixup (Id a n) = Id a $ identifierNameFixup n
 
 -- | Renames empty identifiers, as well as identifiers that are
--- keywords or future reserved words by prepending a '_' to them
+-- keywords or future reserved words by prepending a '_' to them. Also
+-- substitutes illegal characters with a "_" as well.
 identifierNameFixup :: String -> String
-identifierNameFixup name = if isValidIdentifierName name then name
-                           else '_':name
+identifierNameFixup s =
+  let fixStart c = if isValidIdStart c then c else '_'
+      fixPart c  = if isValidIdPart c  then c else '_'
+  in case s of
+    "" -> "_"
+    (start:part) -> let fixed_id = (fixStart start):(map fixPart part)
+                    in if isReservedWord fixed_id then '_':fixed_id
+                       else fixed_id
 
 -- | Fixes an incorrect nesting of break/continue, making the program
 -- abide by the ECMAScript spec (page 92): any continue without a

@@ -27,6 +27,9 @@ module Language.ECMAScript3.Syntax (JavaScript(..)
                                    ,isValid
                                    ,isValidIdentifier
                                    ,isValidIdentifierName
+                                   ,isReservedWord
+                                   ,isValidIdStart
+                                   ,isValidIdPart
                                    ,EnclosingStatement(..)
                                    ,pushLabel
                                    ,pushEnclosing
@@ -358,8 +361,15 @@ bracketState f m = do original <- get
 isValidIdentifier :: Id a -> Bool
 isValidIdentifier (Id _ name) = isValidIdentifierName name
 
+-- | Checks if the 'String' represents a valid identifier name
 isValidIdentifierName :: String -> Bool
-isValidIdentifierName name = (not $ null name) && name `notElem` reservedWords
+isValidIdentifierName name = case name of
+  "" -> False
+  (c:cs) -> isValidIdStart c && and (map isValidIdPart cs) && (not $ isReservedWord name)
+
+-- | Checks if a string is in the list of reserved ECMAScript words
+isReservedWord :: String -> Bool
+isReservedWord = (`elem` reservedWords)
   where reservedWords = keyword ++ futureReservedWord ++ nullKw ++ boolLit
         keyword = ["break", "case", "catch", "continue", "default", "delete"
                   ,"do", "else", "finally", "for", "function", "if", "in"
@@ -373,6 +383,29 @@ isValidIdentifierName name = (not $ null name) && name `notElem` reservedWords
                              ,"synchronized", "throws", "transient", "volatile"]
         nullKw = ["null"]
         boolLit = ["true", "false"]
+
+-- | Checks if a character is valid at the start of an identifier
+isValidIdStart :: Char -> Bool
+isValidIdStart c = unicodeLetter c || c == '$' || c == '_'
+  where unicodeLetter c = case generalCategory c of
+          UppercaseLetter -> True
+          LowercaseLetter -> True
+          TitlecaseLetter -> True
+          ModifierLetter  -> True
+          OtherLetter     -> True
+          LetterNumber    -> True
+          _               -> False
+
+-- | Checks if a character is valid in an identifier part
+isValidIdPart :: Char -> Bool
+isValidIdPart c = isValidIdStart c || isValidIdPartUnicode c
+  where isValidIdPartUnicode c = case generalCategory c of
+          NonSpacingMark       -> True
+          SpacingCombiningMark -> True
+          DecimalNumber        -> True
+          ConnectorPunctuation -> True
+          _                    -> False
+        
           
 data EnclosingStatement = EnclosingIter [Label]
                           -- ^ The enclosing statement is an iteration statement
