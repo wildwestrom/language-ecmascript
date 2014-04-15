@@ -5,7 +5,7 @@
 module Language.ECMAScript3.Syntax.Arbitrary where
 
 import Language.ECMAScript3.Syntax
-import Test.QuickCheck hiding (Prop)
+import Test.QuickCheck (sized, Gen, vectorOf, choose)
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Property (forAllShrink)
 import Data.Map hiding (map,null,filter,foldr,toList,singleton)
