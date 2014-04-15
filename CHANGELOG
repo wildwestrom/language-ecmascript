@@ -1,5 +1,8 @@
 Version change log.
 
+=0.16.2=
+Build fixes for GHC 7.4.2 and 7.8.2.
+
 =0.16.1=
 Removed unicode-escaping of illegal identifier characters in the
 pretty-printer. Adjusted the isValid predicate to check for illegal
