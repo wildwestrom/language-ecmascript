@@ -133,7 +133,10 @@ le :: Default a => Expression a -> Expression a -> Expression a
 le = infixe OpLEq
 
 gt :: Default a => Expression a -> Expression a -> Expression a
-gt = infixe OpGEq
+gt = infixe OpGT
+
+ge :: Default a => Expression a -> Expression a -> Expression a
+ge = infixe OpGEq
 
 in_ :: Default a => Expression a -> Expression a -> Expression a
 in_= infixe OpIn
