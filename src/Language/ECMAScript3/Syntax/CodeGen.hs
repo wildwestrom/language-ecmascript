@@ -1,21 +1,26 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
 -- | Utility combinator functions for simplifying writing programmatic
 -- generation of ECMAScript code
 module Language.ECMAScript3.Syntax.CodeGen where
 
 import Language.ECMAScript3.Syntax
 import Data.Default.Class
+import Data.String
 
 script :: Default a => [Statement a] -> JavaScript a
 script = Script def
 
-id_ :: Default a => String -> Id a
-id_ = Id def
+instance Default a => IsString (Id a) where
+  fromString = Id def
+
+instance Default a => IsString (Prop a) where
+  fromString = PropString def
+
+ident :: Default a => String -> Id a
+ident = Id def
 
 propId :: Default a => Id a -> Prop a
 propId = PropId def
-
-propId_ :: Default a => String -> Prop a
-propId_ = PropId def . id_
 
 propS :: Default a => String -> Prop a
 propS = PropString def
@@ -23,14 +28,20 @@ propS = PropString def
 propN :: Default a => Integer -> Prop a
 propN = PropNum def
 
+instance Default a => IsString (LValue a) where
+  fromString = LVar def
+
 lvar :: Default a => String -> LValue a
-lvar   = LVar def
+lvar = LVar def
 
 ldot :: Default a => Expression a -> String -> LValue a
 ldot = LDot def
 
 lbrack :: Default a => Expression a -> Expression a -> LValue a
 lbrack = LBracket def
+
+instance Default a => IsString (Expression a) where
+  fromString = StringLit def
 
 string :: Default a => String -> Expression a
 string = StringLit def
@@ -40,6 +51,9 @@ regexp = RegexpLit def
 
 number :: Default a => Double -> Expression a
 number = NumLit def
+
+bool :: Default a => Bool -> Expression a
+bool = BoolLit def
 
 int :: Default a => Int -> Expression a
 int    = IntLit def
@@ -59,14 +73,8 @@ this = ThisRef def
 var :: Default a => Id a -> Expression a
 var = VarRef def
 
-var_ :: Default a => String -> Expression a
-var_ = VarRef def . id_
-
 dot :: Default a => Expression a -> Id a -> Expression a
 dot = DotRef def
-
-dot_ :: Default a => Expression a -> String -> Expression a
-dot_ e = DotRef def e . id_
 
 brack :: Default a => Expression a -> Expression a -> Expression a
 brack = BracketRef def
@@ -77,23 +85,163 @@ new = NewExpr def
 prefix :: Default a => PrefixOp -> Expression a -> Expression a
 prefix = PrefixExpr def
 
+lnot :: Default a => Expression a -> Expression a
+lnot = prefix PrefixLNot
+
+bnot :: Default a => Expression a -> Expression a
+bnot = prefix PrefixBNot
+
+plus :: Default a => Expression a -> Expression a
+plus = prefix PrefixPlus
+
+minus :: Default a => Expression a -> Expression a
+minus = prefix PrefixMinus
+
+typeof :: Default a => Expression a -> Expression a
+typeof = prefix PrefixTypeof
+
+void :: Default a => Expression a -> Expression a
+void = prefix PrefixVoid
+
+delete :: Default a => Expression a -> Expression a
+delete = prefix PrefixDelete
+
 uassign :: Default a => UnaryAssignOp -> LValue a -> Expression a
 uassign = UnaryAssignExpr def
 
-infix_
+preinc :: Default a => LValue a -> Expression a
+preinc = uassign PrefixInc
+
+predec :: Default a => LValue a -> Expression a
+predec = uassign PrefixDec
+
+postinc :: Default a => LValue a -> Expression a
+postinc = uassign PostfixInc
+
+postdec :: Default a => LValue a -> Expression a
+postdec = uassign PostfixDec
+
+infixe
   :: Default a =>
      InfixOp -> Expression a -> Expression a -> Expression a
-infix_ = InfixExpr def
+infixe = InfixExpr def
+
+lt :: Default a => Expression a -> Expression a -> Expression a
+lt = infixe OpLT
+
+le :: Default a => Expression a -> Expression a -> Expression a
+le = infixe OpLEq
+
+gt :: Default a => Expression a -> Expression a -> Expression a
+gt = infixe OpGEq
+
+in_ :: Default a => Expression a -> Expression a -> Expression a
+in_= infixe OpIn
+
+instanceof
+  :: Default a => Expression a -> Expression a -> Expression a
+instanceof = infixe OpInstanceof
+
+eq :: Default a => Expression a -> Expression a -> Expression a
+eq = infixe OpEq
+
+neq :: Default a => Expression a -> Expression a -> Expression a
+neq = infixe OpNEq
+
+steq :: Default a => Expression a -> Expression a -> Expression a
+steq = infixe OpStrictEq
+
+stneq :: Default a => Expression a -> Expression a -> Expression a
+stneq = infixe OpStrictNEq
+
+land :: Default a => Expression a -> Expression a -> Expression a
+land = infixe OpLAnd
+
+lor :: Default a => Expression a -> Expression a -> Expression a
+lor  = infixe OpLOr
+
+mul :: Default a => Expression a -> Expression a -> Expression a
+mul = infixe OpMul
+
+div :: Default a => Expression a -> Expression a -> Expression a
+div = infixe OpDiv
+
+mod :: Default a => Expression a -> Expression a -> Expression a
+mod = infixe OpMod
+
+sub :: Default a => Expression a -> Expression a -> Expression a
+sub = infixe OpSub
+
+lshift :: Default a => Expression a -> Expression a -> Expression a
+lshift = infixe OpLShift
+
+srshift
+  :: Default a => Expression a -> Expression a -> Expression a
+srshift = infixe OpSpRShift
+
+zrshift
+  :: Default a => Expression a -> Expression a -> Expression a
+zrshift = infixe OpZfRShift
+
+band :: Default a => Expression a -> Expression a -> Expression a
+band = infixe OpBAnd
+
+bor :: Default a => Expression a -> Expression a -> Expression a
+bor = infixe OpBOr
+
+xor :: Default a => Expression a -> Expression a -> Expression a
+xor = infixe OpBXor
+
+add :: Default a => Expression a -> Expression a -> Expression a
+add = infixe OpAdd
 
 cond
   :: Default a =>
      Expression a -> Expression a -> Expression a -> Expression a
 cond = CondExpr def
 
+assignop :: Default a => AssignOp -> LValue a -> Expression a -> Expression a
+assignop = AssignExpr def
+
 assign
-  :: Default a =>
-     AssignOp -> LValue a -> Expression a -> Expression a
-assign = AssignExpr def
+  :: Default a => LValue a -> Expression a -> Expression a
+assign = assignop OpAssign
+
+assignadd :: Default a => LValue a -> Expression a -> Expression a
+assignadd = assignop OpAssignAdd
+
+assignsub :: Default a => LValue a -> Expression a -> Expression a
+assignsub = assignop OpAssignSub
+
+assignmul :: Default a => LValue a -> Expression a -> Expression a
+assignmul = assignop OpAssignMul
+
+assigndiv :: Default a => LValue a -> Expression a -> Expression a
+assigndiv = assignop OpAssignDiv
+
+assignmod :: Default a => LValue a -> Expression a -> Expression a
+assignmod = assignop OpAssignMod
+
+assignlshift
+  :: Default a => LValue a -> Expression a -> Expression a
+assignlshift = assignop OpAssignLShift
+
+assignsrshift
+  :: Default a => LValue a -> Expression a -> Expression a
+assignsrshift = assignop OpAssignSpRShift
+
+assignzrshift
+  :: Default a => LValue a -> Expression a -> Expression a
+assignzrshift = assignop OpAssignZfRShift
+
+assignband :: Default a => LValue a -> Expression a -> Expression a
+assignband = assignop OpAssignBAnd
+
+assignxor :: Default a => LValue a -> Expression a -> Expression a
+assignxor = assignop OpAssignBXor
+
+assignbor :: Default a => LValue a -> Expression a -> Expression a
+assignbor = assignop OpAssignBOr
 
 list :: Default a => [Expression a] -> Expression a
 list = ListExpr def
@@ -105,36 +253,23 @@ func
   :: Default a => Id a -> [Id a] -> [Statement a] -> Expression a
 func id = FuncExpr def (Just id)
 
-func_
-  :: Default a => String -> [Id a] -> [Statement a] -> Expression a
-func_ s = func (id_ s)
-
 lambda :: Default a => [Id a] -> [Statement a] -> Expression a
 lambda = FuncExpr def Nothing
 
-case_ :: Default a => Expression a -> [Statement a] -> CaseClause a
-case_ = CaseClause def
+casee :: Default a => Expression a -> [Statement a] -> CaseClause a
+casee = CaseClause def
 
-default_ :: Default a => [Statement a] -> CaseClause a
-default_ = CaseDefault def
+defaultc :: Default a => [Statement a] -> CaseClause a
+defaultc = CaseDefault def
 
 catch :: Default a => Id a -> Statement a -> CatchClause a
 catch = CatchClause def
 
-catch_ :: Default a => String -> Statement a -> CatchClause a
-catch_ s = CatchClause def (id_ s)
-
 vardecl :: Default a => Id a -> VarDecl a
 vardecl id = VarDecl def id Nothing
 
-vardecl_ :: Default a => String -> VarDecl a
-vardecl_ = vardecl . id_
-
 varinit :: Default a => Id a -> Expression a -> VarDecl a
 varinit id = VarDecl def id . Just
-
-varinit_ :: Default a => String -> Expression a -> VarDecl a
-varinit_ s = varinit (id_ s)
 
 block :: Default a => [Statement a] -> Statement a
 block = BlockStmt def
@@ -163,8 +298,8 @@ while = WhileStmt def
 dowhile :: Default a => Statement a -> Expression a -> Statement a
 dowhile = DoWhileStmt def
 
-break_ :: Default a => Maybe (Id a) -> Statement a
-break_ = BreakStmt def
+break :: Default a => Maybe (Id a) -> Statement a
+break = BreakStmt def
 
 continue :: Default a => Maybe (Id a) -> Statement a
 continue = ContinueStmt def
@@ -172,13 +307,19 @@ continue = ContinueStmt def
 label :: Default a => Id a -> Statement a -> Statement a
 label = LabelledStmt def
 
-label_ :: Default a => String -> Statement a -> Statement a
-label_ s = label (id_ s)
-
 forin
   :: Default a =>
      ForInInit a -> Expression a -> Statement a -> Statement a
 forin = ForInStmt def
+
+for
+  :: Default a =>
+     ForInit a
+     -> Maybe (Expression a)
+     -> Maybe (Expression a)
+     -> Statement a
+     -> Statement a
+for = ForStmt def
 
 try :: Default a => Statement a -> Statement a
 try b = TryStmt def b Nothing Nothing
@@ -200,8 +341,8 @@ trycatchfinally b c f = TryStmt def b (Just c) (Just f)
 throw :: Default a => Expression a -> Statement a
 throw = ThrowStmt def
 
-return_ :: Default a => Expression a -> Statement a
-return_ = ReturnStmt def . Just
+returns :: Default a => Expression a -> Statement a
+returns = ReturnStmt def . Just
 
 ret :: Default a => Statement a
 ret = ReturnStmt def Nothing
@@ -209,16 +350,12 @@ ret = ReturnStmt def Nothing
 with :: Default a => Expression a -> Statement a -> Statement a
 with = WithStmt def
 
-vds :: Default a => [VarDecl a] -> Statement a
-vds = VarDeclStmt def
+vardecls :: Default a => [VarDecl a] -> Statement a
+vardecls = VarDeclStmt def
 
 function
   :: Default a => Id a -> [Id a] -> [Statement a] -> Statement a
 function = FunctionStmt def
-
-function_
-  :: Default a => String -> [Id a] -> [Statement a] -> Statement a
-function_ s = function (id_ s)
 
 id2string :: Id a -> Expression a
 id2string (Id a s) = StringLit a s
