@@ -1,4 +1,4 @@
-<a href="https://travis-ci.org/jswebtools/language-ecmascript"><img src="https://travis-ci.org/jswebtools/language-ecmascript.svg">Build status</img></a>
+<a href="https://travis-ci.org/jswebtools/language-ecmascript"><img src="https://travis-ci.org/jswebtools/language-ecmascript.svg"></img></a>
 
 # Overview
 
