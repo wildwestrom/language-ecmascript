@@ -1,5 +1,8 @@
 Version change log.
 
+=0.17=
+Added helper functions for code generation (see Language.ECMAScript3.Syntax.CodeGen). Bug fixes to the Arbitrary instances.
+
 =0.16.2=
 Build fixes for GHC 7.4.2 and 7.8.2.
 
