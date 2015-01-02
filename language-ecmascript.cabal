@@ -20,7 +20,7 @@ Description:
   Tools for working with ECMAScript 3 (popularly known as JavaScript). 
   Includes a parser, pretty-printer, tools for working with source tree
   annotations and an arbitrary instance. See CHANGELOG for a summary of
-  changes.
+  changes. Note that the package versions follow Semantic Versioning model (semver.org).
 
 Source-repository head
    type: git
