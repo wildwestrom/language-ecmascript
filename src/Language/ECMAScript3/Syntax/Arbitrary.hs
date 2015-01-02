@@ -22,6 +22,7 @@ import Test.Feat
 import Test.Feat.Class
 import Test.Feat.Enumerate
 import Test.Feat.Modifiers
+import Control.Arrow
 
 deriveEnumerable ''AssignOp
 deriveEnumerable ''InfixOp
@@ -179,15 +180,15 @@ class Fixable a where
   fixUp :: a -> Gen a
 
 instance (Data a) => Fixable (JavaScript a) where
-  fixUp (Script a ss) = (liftM (Script a) (fixBreakContinue ss))
-                     >>=transformBiM (return . identifierFixup
-                                      :: Id a -> Gen (Id a))
-                     >>=transformBiM (fixUpFunExpr
+  fixUp  = transformBiM (return . identifierFixup
+                         :: Id a -> Gen (Id a))
+                     >=>transformBiM (fixUpFunExpr
                                       :: Expression a -> Gen (Expression a))
-                     >>=transformBiM (fixUpFunStmt
+                     >=>transformBiM (fixUpFunStmt
                                       :: Statement a -> Gen (Statement a))
-                     >>=transformBiM (return . fixLValue
+                     >=>transformBiM (return . fixLValue
                                       :: LValue a -> Gen (LValue a))
+                     >=>(\(Script a ss)-> liftM (Script a) $ fixBreakContinue ss)
 
 instance (Data a) => Fixable (Expression a) where
   fixUp = (fixUpFunExpr . transformBi (identifierFixup :: Id a -> Id a))
@@ -298,10 +299,10 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
       fixBC stmt@(LabelledStmt a lab s) =
         do labs <- gets fst
            if (unId lab) `elem` labs
-              -- if duplicate label, delete the current statement (but
-              -- keep it's child statement)
-              then descendM fixBC stmt
-              else liftM (LabelledStmt a lab) $ descendM fixBC s
+             -- if duplicate label, delete the current statement (but
+             -- keep it's child statement)
+             then descendM fixBC s
+             else pushLabel lab $ descendM fixBC stmt
       fixBC stmt@(BreakStmt a mlab) =
         do encls <- gets snd
            case (mlab, encls) of
@@ -315,12 +316,8 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
              (Just lab@(Id b _), _) ->
                if any (elem (unId lab) . getLabelSet) encls
                then return stmt
-               else if not $ all isIterSwitch encls
-                       -- if none of the enclosing statements is an
-                       -- iteration or switch statement, substitute
-                       -- the break statement for an empty statement
-                    then return $ EmptyStmt a
-                    else case concatMap getLabelSet encls of
+               else if all isIterSwitch encls
+                    then case concatMap getLabelSet encls of
                       -- if none of the enclosing statements have
                       -- labels, remove the label from the break
                       -- statement
@@ -328,7 +325,11 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
                       -- if some of them have labels, add the first
                       -- label to the break statement
                       ls -> do newLab <- lift $ selectRandomElement ls
-                               return $ BreakStmt a (Just $ Id b newLab)
+                               return $ BreakStmt a $ Just $ Id b newLab
+                    -- if none of the enclosing statements is an
+                    -- iteration or switch statement, substitute
+                    -- the break statement for an empty statement
+                    else return $ EmptyStmt a
       fixBC stmt@(ContinueStmt a mlab) =
         do encls <- gets snd
            let enIts = filter isIter encls
@@ -355,7 +356,14 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
                             -- label to the break statement
                       ls -> do newLab <- lift $ selectRandomElement ls
                                return $ ContinueStmt a (Just $ Id b newLab)
-      fixBC s = descendM fixBC s
+      fixBC s@(WhileStmt {})   = iterCommon s
+      fixBC s@(DoWhileStmt {}) = iterCommon s
+      fixBC s@(ForStmt {})     = iterCommon s
+      fixBC s@(ForInStmt {})   = iterCommon s
+      fixBC s@(SwitchStmt {})  = pushEnclosing EnclosingSwitch $ descendM fixBC s
+      fixBC s@(BlockStmt {})   = pushEnclosing EnclosingOther $ descendM fixBC s
+      fixBC s                  = descendM fixBC s
+      iterCommon s             = pushEnclosing EnclosingIter $ descendM fixBC s
 
 -- | choose n elements from a list randomly
 rChooseElem :: [a] -> Int -> Gen [a]
