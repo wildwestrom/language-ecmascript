@@ -1,6 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 -- | Utility combinator functions for simplifying writing programmatic
--- generation of ECMAScript code
+-- generation of ECMAScript code. Recommended to use together with the
+-- -XOverloadedStrings GHC extension.
 module Language.ECMAScript3.Syntax.CodeGen where
 
 import Language.ECMAScript3.Syntax
@@ -360,6 +361,7 @@ function
   :: Default a => Id a -> [Id a] -> [Statement a] -> Statement a
 function = FunctionStmt def
 
+-- | Convert an identifier to a String literal
 id2string :: Id a -> Expression a
 id2string (Id a s) = StringLit a s
 
@@ -370,7 +372,7 @@ lv2e lval = case lval of
   LDot a obj fname -> DotRef a obj (Id a fname)
   LBracket a obj field -> BracketRef a obj field
 
--- | May fail
+-- | Convert an expression to an l-value. May fail with an error
 e2lv :: Expression a -> LValue a
 e2lv e = case e of
   VarRef a (Id _ vname) -> LVar a vname
