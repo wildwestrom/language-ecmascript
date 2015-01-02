@@ -304,16 +304,18 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
               else liftM (LabelledStmt a lab) $ descendM fixBC s
       fixBC stmt@(BreakStmt a mlab) =
         do encls <- gets snd
-           case mlab of
-             Nothing  -> if or $ map isIterSwitch encls then return stmt
+           case (mlab, encls) of
+             (_, [])  -> return $ EmptyStmt a
+             (Nothing, _)  -> if all isIterSwitch encls
+                         then return stmt
                          -- if none of the enclosing statements is an
                          -- iteration or switch statement, substitute
                          -- the break statement for an empty statement
                          else return $ EmptyStmt a
-             Just lab@(Id b _) ->
+             (Just lab@(Id b _), _) ->
                if any (elem (unId lab) . getLabelSet) encls
                then return stmt
-               else if not $ and $ map isIterSwitch encls
+               else if not $ all isIterSwitch encls
                        -- if none of the enclosing statements is an
                        -- iteration or switch statement, substitute
                        -- the break statement for an empty statement
@@ -330,13 +332,13 @@ fixBreakContinue = mapM $ \stmt -> evalStateT (fixBC stmt) ([], [])
       fixBC stmt@(ContinueStmt a mlab) =
         do encls <- gets snd
            let enIts = filter isIter encls
-           case mlab of
-             Nothing  -> if not $ null enIts  then return stmt
-                         -- if none of the enclosing statements are
-                         -- iteration statements, substitute the
-                         -- continue statement for an empty statement
-                         else return $ EmptyStmt a
-             Just lab@(Id b _) ->
+           case (mlab, enIts) of
+             -- if none of the enclosing statements are
+             -- iteration statements, substitute the
+             -- continue statement for an empty statement
+             (_, [])  -> return $ EmptyStmt a
+             (Nothing, _)  -> return stmt
+             (Just lab@(Id b _), _) ->
                if any (elem (unId lab) . getLabelSet) enIts
                then return stmt
                else case concatMap getLabelSet enIts of
