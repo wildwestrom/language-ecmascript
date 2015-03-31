@@ -11,7 +11,7 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
 
 import Text.PrettyPrint.Leijen hiding (Pretty)
 import Language.ECMAScript3.Syntax
-import Prelude hiding (maybe, id, (<$>)
+import Prelude hiding (maybe, id, (<$>))
 import Data.Char
 import Numeric
 
