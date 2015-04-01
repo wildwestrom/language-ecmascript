@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances, UndecidableInstances #-}
+{-# LANGUAGE CPP #-}
 
 -- | Pretty-printing JavaScript.
 module Language.ECMAScript3.PrettyPrint (Pretty (..)
@@ -11,7 +12,11 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
 
 import Text.PrettyPrint.Leijen hiding (Pretty)
 import Language.ECMAScript3.Syntax
+#if __GLASGOW_HASKELL__ > 708
 import Prelude hiding (maybe, id, (<$>))
+#else
+import Prelude hiding (maybe, id)
+#endif
 import Data.Char
 import Numeric
 
