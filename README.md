@@ -8,12 +8,16 @@ The library has started as WebBits at Brown University, and many people have con
 
 # Versioning
 
-The library follows Semantic Versioning (http://semver.org) for its version numbers. The version is a triple of numbers MAJOR.MINOR.PATCH, where 
-* MAJOR is incremented only on backwards-incompatible and reverse-dependency-breaking changes,
+Since version 0.17.0.1 the library follows Haskell Package Versioning Policy (https://wiki.haskell.org/Package_versioning_policy) for its version numbers. The version is a triple of numbers MAJOR1.MAJOR2.MINOR(.PATCH), where the last number is optional and:
+* MAJOR1 and MAJOR2 are incremented only on backwards-incompatible and reverse-dependency-breaking changes,
 * MINOR is incremented on any additional backwards-compatible features,
 * PATCH is incremented on any other changes, mostly bug/build-fixes.
 
 If your publicly-released package depends on this library you are strongly encouraged to restrict allowed versions to at least the MAJOR version you are using.
+
+Starting the next major version release, the library is going to follow the following versioning scheme (compatible with PVP): ESS.MAJOR.MINOR.PATCH, where
+* MAJOR, MINOR and PATCH are as above, and
+* ESS corresponds to the version of the ECMAScript standard the library supports.
 
 # Contributing
 
