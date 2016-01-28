@@ -184,6 +184,8 @@ instance (Data a) => Fixable (JavaScript a) where
                          :: Id a -> Gen (Id a))
                      >=>transformBiM (fixUpFunExpr
                                       :: Expression a -> Gen (Expression a))
+                     >=>transformBiM (fixUpListExpr
+                                      :: Expression a -> Gen (Expression a))
                      >=>transformBiM (fixUpFunStmt
                                       :: Statement a -> Gen (Statement a))
                      >=>transformBiM (return . fixLValue
@@ -193,42 +195,49 @@ instance (Data a) => Fixable (JavaScript a) where
 instance (Data a) => Fixable (Expression a) where
   fixUp = (fixUpFunExpr . transformBi (identifierFixup :: Id a -> Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
           
 instance (Data a) => Fixable (Statement a) where
   fixUp = (fixUpFunStmt . transformBi (identifierFixup :: Id a -> Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
 
 instance (Data a) => Fixable (CaseClause a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
 
 instance (Data a) => Fixable (CatchClause a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
           
 instance (Data a) => Fixable (ForInit a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
           
 instance (Data a) => Fixable (ForInInit a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
           
 instance (Data a) => Fixable (VarDecl a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
 
@@ -238,12 +247,14 @@ instance Fixable (Id a) where
 instance (Data a) => Fixable (Prop a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
 
 instance (Data a) => Fixable (LValue a) where
   fixUp = transformBiM (return . identifierFixup :: Id a -> Gen (Id a))
        >=>transformBiM (fixUpFunExpr :: Expression a -> Gen (Expression a))
+       >=>transformBiM (fixUpListExpr :: Expression a -> Gen (Expression a))
        >=>transformBiM (fixUpFunStmt :: Statement a -> Gen (Statement a))
        >=>transformBiM (return . fixLValue :: LValue a -> Gen (LValue a))
        >=>(return . fixLValue)
@@ -257,6 +268,11 @@ fixLValue lv = case lv of
 fixUpFunExpr :: (Data a) => Expression a -> Gen (Expression a)
 fixUpFunExpr e = case e of
   FuncExpr a mid params body -> liftM (FuncExpr a mid params) $ fixBreakContinue body
+  _ -> return e
+
+fixUpListExpr :: (Data a) => Expression a -> Gen (Expression a)
+fixUpListExpr e = case e of
+  ListExpr a [] -> return $ NullLit a
   _ -> return e
 
 fixUpFunStmt :: (Data a) => Statement a -> Gen (Statement a)
