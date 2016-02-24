@@ -39,7 +39,9 @@ quoteCommon p s = do loc <- TH.location
                                  setPosition $ (flip setSourceName) fname $
                                    (flip setSourceLine) line $
                                    (flip setSourceColumn) col $ pos
-                                 p
+                                 r <- p
+                                 eof
+                                 return r
                      case parse p2 "" s of
                        Left err -> do TH.report True $ show err
                                       return $ TH.UnboxedTupE []
