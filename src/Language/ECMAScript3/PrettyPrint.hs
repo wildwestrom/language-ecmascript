@@ -41,7 +41,7 @@ instance Pretty (Expression a) where
 
 -- | Print a list of items in parenthesis
 parenList :: (a -> Doc) -> [a] -> Doc
-parenList ppElem = parens . cat . punctuate comma . map ppElem
+parenList ppElem = parens . align . cat . punctuate comma . map ppElem
 
 instance Pretty (Statement a) where
   prettyPrint s = case s of
