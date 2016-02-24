@@ -37,7 +37,7 @@ instance Pretty (Expression a) where
 
 -- | Print a list of items in parenthesis
 parenList :: (a -> Doc) -> [a] -> Doc
-parenList ppElem = parens . align . cat . punctuate comma . map ppElem
+parenList ppElem = encloseSep (text "(") (text ")") comma . map ppElem
 
 isIf :: Statement a -> Bool
 isIf IfSingleStmt {} = True
