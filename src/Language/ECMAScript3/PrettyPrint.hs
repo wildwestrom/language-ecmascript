@@ -39,6 +39,10 @@ instance Pretty [Statement a] where
 instance Pretty (Expression a) where
   prettyPrint = ppExpression True
 
+-- | Print a list of items in parenthesis
+parenList :: (a -> Doc) -> [a] -> Doc
+parenList ppElem = parens . cat . punctuate comma . map ppElem
+
 instance Pretty (Statement a) where
   prettyPrint s = case s of
     BlockStmt _ ss -> asBlock ss
@@ -93,7 +97,7 @@ instance Pretty (Statement a) where
       <> semi
     FunctionStmt _ name args body ->
       text "function" <+> prettyPrint name <>
-      parens (cat $ punctuate comma (map prettyPrint args)) <+>
+      parenList prettyPrint args <+>
       asBlock body
 
 -- | A predicate to tell if the expression --when pretty-printed--
@@ -318,7 +322,7 @@ ppMemberExpression :: Expression a -> Doc
 ppMemberExpression e = case e of
   FuncExpr _ name params body ->
     text "function" <+> maybe name (\n -> prettyPrint n <> space) <>
-    parens (cat $ punctuate comma (map prettyPrint params)) <+>
+    parenList prettyPrint params <+>
     asBlock body
   DotRef _ obj id -> ppObjInDotRef obj ppMemberExpression <> text "." <> prettyPrint id
   BracketRef _ obj key ->
@@ -340,8 +344,7 @@ ppObjInDotRef i@(IntLit _ _) _ = parens (ppPrimaryExpression i)
 ppObjInDotRef e p              = p e
 
 ppArguments :: [Expression a] -> Doc
-ppArguments es =
-  parens $ cat $ punctuate comma (map (ppAssignmentExpression True) es)
+ppArguments = parenList (ppAssignmentExpression True)
 
 ppLHSExpression :: Expression a -> Doc
 ppLHSExpression = ppCallExpression
@@ -469,7 +472,7 @@ ppAssignmentExpression hasIn e = case e of
 -- 11.14
 ppExpression :: Bool -> Expression a -> Doc
 ppExpression hasIn e = case e of
-  ListExpr _ es -> cat $ punctuate comma (map (ppExpression hasIn) es)
+  ListExpr _ es -> parenList (ppExpression hasIn) es
   _ -> ppAssignmentExpression hasIn e
 
 maybe :: Maybe a -> (a -> Doc) -> Doc
