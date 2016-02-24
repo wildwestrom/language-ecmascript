@@ -254,10 +254,7 @@ inBlock s                 = asBlock [s]
 
 asBlock :: [Statement a] -> Doc
 asBlock [] = lbrace <$$> rbrace
-asBlock ss = lbrace <> line <> (indentBlock $ prettyPrint ss) <$$> rbrace
-
-indentBlock :: Doc -> Doc
-indentBlock = indent 3
+asBlock ss = lbrace <> nest 3 (line <> prettyPrint ss) <$$> rbrace
 
 ppVarDecl :: Bool -> VarDecl a -> Doc
 ppVarDecl hasIn vd = case vd of
