@@ -51,20 +51,20 @@ instance Pretty (Statement a) where
     ExprStmt _ e | otherwise            -> ppExpression True e <> semi
     IfSingleStmt _ test cons -> text "if" <+>
                                 parens (ppExpression True test) </>
-                                (nest 3 $ prettyPrint cons)
+                                indented 3 cons
     IfStmt _ test cons alt -> text "if" <+> parens (ppExpression True test) </>
-                              (nest 3 $ prettyPrint cons) </> text "else"
-                              <+> (nest 3 $ prettyPrint alt)
+                              indented 3 cons </> text "else"
+                              <+> indented 3 alt
     SwitchStmt _ e cases ->
       text "switch" <+> parens (ppExpression True e) <$>
       braces (nest 3 (vcat (map prettyPrint cases)))
     WhileStmt _ test body -> text "while" <+> parens (ppExpression True test) </>
-                             prettyPrint body
+                             indented 3 body
     ReturnStmt _ Nothing -> text "return" <> semi
     ReturnStmt _ (Just e) -> text "return" <+> ppExpression True e <> semi
     DoWhileStmt _ s e ->
       text "do" </>
-      (prettyPrint s </> text "while" <+> parens (ppExpression True e)
+      (indented 3 s </> text "while" <+> parens (ppExpression True e)
        <> semi)
     BreakStmt _ Nothing ->  text "break" <> semi
     BreakStmt _ (Just label) -> text "break" <+> prettyPrint label <> semi
@@ -75,12 +75,12 @@ instance Pretty (Statement a) where
     ForInStmt p init e body ->
       text "for" <+>
       parens (prettyPrint init <+> text "in" <+> ppExpression True e) </>
-      prettyPrint body
+      indented 3 body
     ForStmt _ init incr test body ->
       text "for" <+>
       parens (prettyPrint init <> semi <+> maybe incr (ppExpression True) <>
               semi <+> maybe test (ppExpression True)) </>
-      prettyPrint body
+      indented 3 body
     TryStmt _ stmt mcatch mfinally ->
       text "try" </> inBlock stmt </> ppCatch </> ppFinally
       where ppFinally = case mfinally of
@@ -91,7 +91,7 @@ instance Pretty (Statement a) where
               Just cc -> prettyPrint cc
     ThrowStmt _ e -> text "throw" <+> ppExpression True e <> semi
     WithStmt _ e s -> text "with" <+> parens (ppExpression True e)
-                      </> prettyPrint s
+                      </> indented 3 s
     VarDeclStmt _ decls ->
       text "var" <+> cat (punctuate comma (map (ppVarDecl True) decls))
       <> semi
@@ -239,6 +239,10 @@ renderStatements = show . prettyPrint
 -- statements as a 'String'
 renderExpression :: Expression a -> String
 renderExpression = show . prettyPrint
+
+indented :: Int -> Statement a -> Doc
+indented _     stmt@BlockStmt {} = prettyPrint stmt
+indented width stmt              = indent width (prettyPrint stmt)
 
 -- Displays the statement in { ... }, unless it is a block itself.
 inBlock:: Statement a -> Doc
