@@ -43,6 +43,11 @@ instance Pretty (Expression a) where
 parenList :: (a -> Doc) -> [a] -> Doc
 parenList ppElem = parens . align . cat . punctuate comma . map ppElem
 
+isIf :: Statement a -> Bool
+isIf IfSingleStmt {} = True
+isIf IfStmt {} = True
+isIf _ = False
+
 instance Pretty (Statement a) where
   prettyPrint s = case s of
     BlockStmt _ ss -> asBlock ss
@@ -54,7 +59,9 @@ instance Pretty (Statement a) where
                                 indented 3 cons
     IfStmt _ test cons alt -> text "if" <+> parens (ppExpression True test) </>
                               indented 3 cons </> text "else"
-                              <+> indented 3 alt
+                              <+> if isIf alt
+                                  then prettyPrint alt
+                                  else indented 3 alt
     SwitchStmt _ e cases ->
       text "switch" <+> parens (ppExpression True e) <$>
       braces (nest 3 (vcat (map prettyPrint cases)))
