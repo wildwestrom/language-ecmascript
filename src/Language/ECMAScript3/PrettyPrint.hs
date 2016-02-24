@@ -12,11 +12,7 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
 
 import Text.PrettyPrint.Leijen hiding (Pretty)
 import Language.ECMAScript3.Syntax
-#if __GLASGOW_HASKELL__ > 708
-import Prelude hiding (maybe, id, (<$>))
-#else
 import Prelude hiding (maybe, id)
-#endif
 import Data.Char
 import Numeric
 
@@ -63,7 +59,7 @@ instance Pretty (Statement a) where
                                   then prettyPrint alt
                                   else indented 3 alt
     SwitchStmt _ e cases ->
-      text "switch" <+> parens (ppExpression True e) <$>
+      text "switch" <+> parens (ppExpression True e) <> line <>
       braces (nest 3 (vcat (map prettyPrint cases)))
     WhileStmt _ test body -> text "while" <+> parens (ppExpression True test) </>
                              indented 3 body
