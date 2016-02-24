@@ -13,6 +13,7 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
 import Text.PrettyPrint.Leijen hiding (Pretty)
 import Language.ECMAScript3.Syntax
 import Prelude hiding (maybe, id)
+import qualified Prelude
 import Data.Char
 import Numeric
 
@@ -259,8 +260,14 @@ asBlock ss = lbrace <> nest 3 (line <> prettyPrint ss) <$$> rbrace
 ppVarDecl :: Bool -> VarDecl a -> Doc
 ppVarDecl hasIn vd = case vd of
   VarDecl _ id Nothing  -> prettyPrint id
-  VarDecl _ id (Just e) -> prettyPrint id <+> equals
-                           <+> ppAssignmentExpression hasIn e
+  VarDecl _ id (Just e) ->
+      prettyPrint id <+> equals
+      <+> maybeAlign (ppAssignmentExpression hasIn e)
+      where
+          maybeAlign =
+              case e of
+              FuncExpr {} -> Prelude.id
+              _ -> align
 
 -- | Pretty prints a string assuming it's used as an identifier. Note
 -- that per Spec 7.6 unicode escape sequences representing illegal
