@@ -10,17 +10,18 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
                                         ,unsafeInExprStmt
                                         ) where
 
-import Text.PrettyPrint.Leijen hiding (Pretty)
+import qualified Text.PrettyPrint.Leijen as Pretty
+import Text.PrettyPrint.Leijen hiding (Pretty, parens)
 import Language.ECMAScript3.Syntax
-#if __GLASGOW_HASKELL__ > 708
-import Prelude hiding (maybe, id, (<$>))
-#else
 import Prelude hiding (maybe, id)
-#endif
+import qualified Prelude
 import Data.Char
 import Numeric
 
 {-# DEPRECATED PP, javaScript, renderStatements, renderExpression "These interfaces are outdated and would be removed/hidden in version 1.0. Use the Pretty class instead." #-}
+
+parens :: Doc -> Doc
+parens = Pretty.parens . align
 
 -- | A class of pretty-printable ECMAScript AST nodes. Will
 -- pretty-print correct JavaScript given that the 'isValid' predicate
@@ -33,34 +34,45 @@ class Pretty a where
 instance Pretty (JavaScript a) where
   prettyPrint (Script _ ss) = prettyPrint ss
 
-instance Pretty [Statement a] where 
+instance Pretty [Statement a] where
   prettyPrint = vcat . map prettyPrint
 
-instance Pretty (Expression a) where 
+instance Pretty (Expression a) where
   prettyPrint = ppExpression True
 
-instance Pretty (Statement a) where 
+-- | Print a list of items in parenthesis
+parenList :: (a -> Doc) -> [a] -> Doc
+parenList ppElem = encloseSep (text "(") (text ")") comma . map ppElem
+
+isIf :: Statement a -> Bool
+isIf IfSingleStmt {} = True
+isIf IfStmt {} = True
+isIf _ = False
+
+instance Pretty (Statement a) where
   prettyPrint s = case s of
     BlockStmt _ ss -> asBlock ss
     EmptyStmt _ -> semi
-    ExprStmt _ e | unsafeInExprStmt (e) -> parens (ppExpression True e) <> semi
-    ExprStmt _ e | otherwise            -> ppExpression True e <> semi
-    IfSingleStmt _ test cons -> text "if" <+> 
-                                parens (ppExpression True test) </> 
-                                (nest 3 $ prettyPrint cons)
+    ExprStmt _ e | unsafeInExprStmt (e) -> parens (nest 4 (ppExpression True e)) <> semi
+    ExprStmt _ e | otherwise            -> nest 4 (ppExpression True e) <> semi
+    IfSingleStmt _ test cons -> text "if" <+>
+                                parens (ppExpression True test) </>
+                                indented 3 cons
     IfStmt _ test cons alt -> text "if" <+> parens (ppExpression True test) </>
-                              (nest 3 $ prettyPrint cons) </> text "else"
-                              <+> (nest 3 $ prettyPrint alt)
+                              indented 3 cons </> text "else"
+                              <+> if isIf alt
+                                  then prettyPrint alt
+                                  else indented 3 alt
     SwitchStmt _ e cases ->
-      text "switch" <+> parens (ppExpression True e) <$>
-      braces (nest 3 (vcat (map prettyPrint cases)))
+      text "switch" <+> parens (ppExpression True e) <> line <>
+      ppBlock 2 (vcat (map prettyPrint cases))
     WhileStmt _ test body -> text "while" <+> parens (ppExpression True test) </>
-                             prettyPrint body
+                             indented 3 body
     ReturnStmt _ Nothing -> text "return" <> semi
-    ReturnStmt _ (Just e) -> text "return" <+> ppExpression True e <> semi
-    DoWhileStmt _ s e -> 
-      text "do" </> 
-      (prettyPrint s </> text "while" <+> parens (ppExpression True e)
+    ReturnStmt _ (Just e) -> text "return" <+> nest 4 (ppExpression True e) <> semi
+    DoWhileStmt _ s e ->
+      text "do" </>
+      (indented 3 s </> text "while" <+> parens (ppExpression True e)
        <> semi)
     BreakStmt _ Nothing ->  text "break" <> semi
     BreakStmt _ (Just label) -> text "break" <+> prettyPrint label <> semi
@@ -68,17 +80,17 @@ instance Pretty (Statement a) where
     ContinueStmt _ (Just label) -> text"continue" <+> prettyPrint label
                                    <> semi
     LabelledStmt _ label s -> prettyPrint label <> colon </> prettyPrint s
-    ForInStmt p init e body -> 
-      text "for" <+> 
-      parens (prettyPrint init <+> text "in" <+> ppExpression True e) </> 
-      prettyPrint body
+    ForInStmt p init e body ->
+      text "for" <+>
+      parens (prettyPrint init <+> text "in" <+> ppExpression True e) </>
+      indented 3 body
     ForStmt _ init incr test body ->
-      text "for" <+> 
-      parens (prettyPrint init <> semi <+> maybe incr (ppExpression True) <> 
-              semi <+> maybe test (ppExpression True)) </> 
-      prettyPrint body
+      text "for" <+>
+      parens (prettyPrint init <> semi <+> maybe incr (ppExpression True) <>
+              semi <+> maybe test (ppExpression True)) </>
+      indented 3 body
     TryStmt _ stmt mcatch mfinally ->
-      text "try" </> inBlock stmt </> ppCatch </> ppFinally 
+      text "try" </> inBlock stmt </> ppCatch </> ppFinally
       where ppFinally = case mfinally of
               Nothing -> empty
               Just stmt -> text "finally" <> inBlock stmt
@@ -87,13 +99,13 @@ instance Pretty (Statement a) where
               Just cc -> prettyPrint cc
     ThrowStmt _ e -> text "throw" <+> ppExpression True e <> semi
     WithStmt _ e s -> text "with" <+> parens (ppExpression True e)
-                      </> prettyPrint s
+                      </> indented 3 s
     VarDeclStmt _ decls ->
       text "var" <+> cat (punctuate comma (map (ppVarDecl True) decls))
       <> semi
     FunctionStmt _ name args body ->
-      text "function" <+> prettyPrint name <> 
-      parens (cat $ punctuate comma (map prettyPrint args)) <+>
+      text "function" <+> prettyPrint name <>
+      parenList prettyPrint args <+>
       asBlock body
 
 -- | A predicate to tell if the expression --when pretty-printed--
@@ -121,12 +133,12 @@ unsafeInExprStmt = unsafeInExprStmt_ 15
           LVar {} -> False
           LDot _ obj _ -> unsafeInExprStmt_ prec obj
           LBracket _ obj _ -> unsafeInExprStmt_ prec obj
-            
+
 instance Pretty (CatchClause a) where
   prettyPrint (CatchClause _ id s) =
     text "catch" <+> (parens.prettyPrint) id <+> inBlock s
 
-instance Pretty (ForInit a) where 
+instance Pretty (ForInit a) where
   prettyPrint t = case t of
     NoInit     -> empty
     VarInit vs -> text "var"
@@ -138,11 +150,11 @@ instance Pretty (ForInInit a) where
     ForInVar id  -> text "var" <+> prettyPrint id
     ForInLVal lv -> prettyPrint lv
 
-instance Pretty (LValue a) where 
+instance Pretty (LValue a) where
   prettyPrint lv = case lv of
     LVar _ x -> printIdentifierName x
     LDot _ e x -> ppObjInDotRef e ppMemberExpression <> text "." <> printIdentifierName x
-    LBracket _ e1 e2 -> ppMemberExpression e1 <> 
+    LBracket _ e1 e2 -> ppMemberExpression e1 <>
                         brackets (ppExpression True e2)
 
 instance Pretty (VarDecl a) where
@@ -150,16 +162,21 @@ instance Pretty (VarDecl a) where
 
 instance Pretty (CaseClause a) where
   prettyPrint c = case c of
-    CaseClause _ e ss -> 
-      text "case" <+> ppExpression True e <> colon </> nest 2 (prettyPrint ss)
-    CaseDefault _ ss -> text "default:" </> nest 2 (prettyPrint ss)
+    CaseClause _ e ss ->
+      text "case" <+> ppExpression True e <> suffix ss
+    CaseDefault _ ss ->
+      text "default" <> suffix ss
+    where
+      suffix :: [Statement a] -> Doc
+      suffix [] = colon
+      suffix ss = colon <> nest 2 (linebreak <> prettyPrint ss)
 
-instance Pretty InfixOp where 
+instance Pretty InfixOp where
    prettyPrint op = text $ case op of
      OpMul -> "*"
      OpDiv -> "/"
-     OpMod -> "%" 
-     OpAdd -> "+" 
+     OpMod -> "%"
+     OpAdd -> "+"
      OpSub -> "-"
      OpLShift -> "<<"
      OpSpRShift -> ">>"
@@ -180,7 +197,7 @@ instance Pretty InfixOp where
      OpLAnd -> "&&"
      OpLOr -> "||"
 
-instance Pretty AssignOp where 
+instance Pretty AssignOp where
   prettyPrint op = text $ case op of
     OpAssign -> "="
     OpAssignAdd -> "+="
@@ -195,7 +212,7 @@ instance Pretty AssignOp where
     OpAssignBXor -> "^="
     OpAssignBOr -> "|="
 
-instance Pretty PrefixOp where 
+instance Pretty PrefixOp where
   prettyPrint op = text $ case op of
     PrefixLNot -> "!"
     PrefixBNot -> "~"
@@ -214,10 +231,10 @@ instance Pretty (Prop a) where
 instance Pretty (Id a) where
   prettyPrint (Id _ str) = printIdentifierName str
 
-class PP a where 
+class PP a where
   pp :: a -> Doc
 
-instance Pretty a => PP a where 
+instance Pretty a => PP a where
   pp = prettyPrint
 
 -- | DEPRECATED: Use 'prettyPrint' instead! Renders a JavaScript
@@ -236,6 +253,10 @@ renderStatements = show . prettyPrint
 renderExpression :: Expression a -> String
 renderExpression = show . prettyPrint
 
+indented :: Int -> Statement a -> Doc
+indented _     stmt@BlockStmt {} = prettyPrint stmt
+indented width stmt              = indent width (prettyPrint stmt)
+
 -- Displays the statement in { ... }, unless it is a block itself.
 inBlock:: Statement a -> Doc
 inBlock s@(BlockStmt _ _) = prettyPrint s
@@ -243,16 +264,22 @@ inBlock s                 = asBlock [s]
 
 asBlock :: [Statement a] -> Doc
 asBlock [] = lbrace <$$> rbrace
-asBlock ss = lbrace <> line <> (indentBlock $ prettyPrint ss) <$$> rbrace
+asBlock ss = ppBlock 3 (prettyPrint ss)
 
-indentBlock :: Doc -> Doc
-indentBlock = indent 3
+ppBlock :: Int -> Doc -> Doc
+ppBlock width doc = lbrace <> nest width (line <> doc) <$$> rbrace
 
 ppVarDecl :: Bool -> VarDecl a -> Doc
 ppVarDecl hasIn vd = case vd of
   VarDecl _ id Nothing  -> prettyPrint id
-  VarDecl _ id (Just e) -> prettyPrint id <+> equals
-                           <+> ppAssignmentExpression hasIn e
+  VarDecl _ id (Just e) ->
+      prettyPrint id <+> equals
+      </> maybeAlign (ppAssignmentExpression hasIn e)
+      where
+          maybeAlign =
+              case e of
+              FuncExpr {} -> Prelude.id
+              _ -> align
 
 -- | Pretty prints a string assuming it's used as an identifier. Note
 -- that per Spec 7.6 unicode escape sequences representing illegal
@@ -283,7 +310,7 @@ regexpEscape :: String -> String
 regexpEscape = regexpEscapeChar True
   where regexpEscapeChar :: Bool -- ^ First char?
                          -> String -> String
-        regexpEscapeChar first s = 
+        regexpEscapeChar first s =
           case (s, first) of
             ("", True) -> "(?:)"
             ("", False)-> ""
@@ -306,7 +333,7 @@ ppPrimaryExpression e = case e of
   IntLit _ n ->  int n
   StringLit _ str -> dquotes $ text $ jsEscape str
   RegexpLit _ reg g ci -> text "/" <> (text (regexpEscape reg)) <> text "/" <>
-                          (if g then text "g" else empty) <> 
+                          (if g then text "g" else empty) <>
                           (if ci then text "i" else empty)
   ArrayLit _ es -> list $ map (ppAssignmentExpression True) es
   ObjectLit _ xs -> encloseSep lbrace rbrace comma $ map ppField xs
@@ -316,14 +343,14 @@ ppPrimaryExpression e = case e of
 -- 11.2
 ppMemberExpression :: Expression a -> Doc
 ppMemberExpression e = case e of
-  FuncExpr _ name params body -> 
+  FuncExpr _ name params body ->
     text "function" <+> maybe name (\n -> prettyPrint n <> space) <>
-    parens (cat $ punctuate comma (map prettyPrint params)) <+>
+    parenList prettyPrint params <+>
     asBlock body
   DotRef _ obj id -> ppObjInDotRef obj ppMemberExpression <> text "." <> prettyPrint id
-  BracketRef _ obj key -> 
-    ppMemberExpression obj <> brackets (ppExpression True key)  
-  NewExpr _ ctor args -> 
+  BracketRef _ obj key ->
+    ppMemberExpression obj <> brackets (ppExpression True key)
+  NewExpr _ ctor args ->
     text "new" <+> ppMemberExpression ctor <> ppArguments args
   _ -> ppPrimaryExpression e
 
@@ -340,8 +367,7 @@ ppObjInDotRef i@(IntLit _ _) _ = parens (ppPrimaryExpression i)
 ppObjInDotRef e p              = p e
 
 ppArguments :: [Expression a] -> Doc
-ppArguments es = 
-  parens $ cat $ punctuate comma (map (ppAssignmentExpression True) es)
+ppArguments = parenList (ppAssignmentExpression True)
 
 ppLHSExpression :: Expression a -> Doc
 ppLHSExpression = ppCallExpression
@@ -352,7 +378,7 @@ ppPostfixExpression e = case e of
   UnaryAssignExpr _ PostfixInc e' -> prettyPrint e' <> text "++"
   UnaryAssignExpr _ PostfixDec e' -> prettyPrint e' <> text "--"
   _ -> ppLHSExpression e
-  
+
 -- 11.4
 ppUnaryExpression :: Expression a -> Doc
 ppUnaryExpression e = case e of
@@ -374,105 +400,104 @@ prefixSpace op = case op of
 -- 11.5
 ppMultiplicativeExpression :: Expression a -> Doc
 ppMultiplicativeExpression e = case e of
-  InfixExpr _ op e1 e2 | op `elem` [OpMul, OpDiv, OpMod] -> 
-    ppMultiplicativeExpression e1 <+> prettyPrint op <+> ppUnaryExpression e2
+  InfixExpr _ op e1 e2 | op `elem` [OpMul, OpDiv, OpMod] ->
+    ppMultiplicativeExpression e1 </> prettyPrint op </> ppUnaryExpression e2
   _ -> ppUnaryExpression e
-  
+
 -- 11.6
 ppAdditiveExpression :: Expression a -> Doc
 ppAdditiveExpression e = case e of
-  InfixExpr _ op e1 e2 | op `elem` [OpAdd, OpSub] -> 
-    ppAdditiveExpression e1 <+> prettyPrint op
-    <+> ppMultiplicativeExpression e2
+  InfixExpr _ op e1 e2 | op `elem` [OpAdd, OpSub] ->
+    ppAdditiveExpression e1 </> prettyPrint op
+    </> ppMultiplicativeExpression e2
   _ -> ppMultiplicativeExpression e
 
 -- 11.7
 ppShiftExpression :: Expression a -> Doc
 ppShiftExpression e = case e of
-  InfixExpr _ op e1 e2 | op `elem` [OpLShift, OpSpRShift, OpZfRShift] -> 
-    ppShiftExpression e1 <+> prettyPrint op <+> ppAdditiveExpression e2  
+  InfixExpr _ op e1 e2 | op `elem` [OpLShift, OpSpRShift, OpZfRShift] ->
+    ppShiftExpression e1 </> prettyPrint op </> ppAdditiveExpression e2
   _ -> ppAdditiveExpression e
 
--- 11.8.  
+-- 11.8.
 -- | @ppRelationalExpression True@ is RelationalExpression,
 -- @ppRelationalExpression False@ is RelationalExpressionNoIn
 ppRelationalExpression :: Bool -> Expression a -> Doc
-ppRelationalExpression hasIn e = 
+ppRelationalExpression hasIn e =
   let opsNoIn = [OpLT, OpGT, OpLEq, OpGEq, OpInstanceof]
       ops     = if hasIn then OpIn:opsNoIn else opsNoIn
-  in case e of    
-    InfixExpr _ op e1 e2 | op `elem` ops -> 
-      ppRelationalExpression hasIn e1 <+> prettyPrint op
-      <+> ppShiftExpression e2
+  in case e of
+    InfixExpr _ op e1 e2 | op `elem` ops ->
+      ppRelationalExpression hasIn e1 </> prettyPrint op
+      </> ppShiftExpression e2
     _ -> ppShiftExpression e
-    
+
 -- 11.9
 ppEqualityExpression :: Bool -> Expression a -> Doc
 ppEqualityExpression hasIn e = case e of
   InfixExpr _ op e1 e2 | op `elem` [OpEq, OpNEq, OpStrictEq, OpStrictNEq] ->
-    ppEqualityExpression hasIn e1 <+> prettyPrint op <+> 
+    ppEqualityExpression hasIn e1 </> prettyPrint op </>
     ppRelationalExpression hasIn e2
   _ -> ppRelationalExpression hasIn e
-  
+
 -- 11.10
 ppBitwiseANDExpression :: Bool -> Expression a -> Doc
 ppBitwiseANDExpression hasIn e = case e of
-  InfixExpr _ op@OpBAnd e1 e2 -> ppBitwiseANDExpression hasIn e1 <+> 
-                                 prettyPrint op <+>
+  InfixExpr _ op@OpBAnd e1 e2 -> ppBitwiseANDExpression hasIn e1 </>
+                                 prettyPrint op </>
                                  ppEqualityExpression hasIn e2
   _ -> ppEqualityExpression hasIn e
-  
+
 ppBitwiseXORExpression :: Bool -> Expression a -> Doc
 ppBitwiseXORExpression hasIn e = case e of
-  InfixExpr _ op@OpBXor e1 e2 -> ppBitwiseXORExpression hasIn e1 <+>
-                                 prettyPrint op <+>
+  InfixExpr _ op@OpBXor e1 e2 -> ppBitwiseXORExpression hasIn e1 </>
+                                 prettyPrint op </>
                                  ppBitwiseANDExpression hasIn e2
   _ -> ppBitwiseANDExpression hasIn e
-  
+
 ppBitwiseORExpression :: Bool -> Expression a -> Doc
 ppBitwiseORExpression hasIn e = case e of
-  InfixExpr _ op@OpBOr e1 e2 -> ppBitwiseORExpression hasIn e1 <+>
-                                prettyPrint op <+>
+  InfixExpr _ op@OpBOr e1 e2 -> ppBitwiseORExpression hasIn e1 </>
+                                prettyPrint op </>
                                 ppBitwiseXORExpression hasIn e2
   _ -> ppBitwiseXORExpression hasIn e
 
 -- 11.11
 ppLogicalANDExpression :: Bool -> Expression a -> Doc
 ppLogicalANDExpression hasIn e = case e of
-  InfixExpr _ op@OpLAnd e1 e2 -> ppLogicalANDExpression hasIn e1 <+>
-                                 prettyPrint op <+>
+  InfixExpr _ op@OpLAnd e1 e2 -> ppLogicalANDExpression hasIn e1 </>
+                                 prettyPrint op </>
                                  ppBitwiseORExpression hasIn e2
-  _ -> ppBitwiseORExpression hasIn e                                 
-                                 
+  _ -> ppBitwiseORExpression hasIn e
+
 ppLogicalORExpression :: Bool -> Expression a -> Doc
 ppLogicalORExpression hasIn e = case e of
-  InfixExpr _ op@OpLOr e1 e2 -> ppLogicalORExpression hasIn e1 <+>
-                                prettyPrint op <+>
+  InfixExpr _ op@OpLOr e1 e2 -> ppLogicalORExpression hasIn e1 </>
+                                prettyPrint op </>
                                 ppLogicalANDExpression hasIn e2
   _ -> ppLogicalANDExpression hasIn e
-  
+
 -- 11.12
 ppConditionalExpression :: Bool -> Expression a -> Doc
 ppConditionalExpression hasIn e = case e of
-  CondExpr _ c et ee -> ppLogicalORExpression hasIn c <+> text "?" <+> 
-                        ppAssignmentExpression hasIn et <+> colon <+>
+  CondExpr _ c et ee -> ppLogicalORExpression hasIn c </> text "?" <+>
+                        ppAssignmentExpression hasIn et </> colon <+>
                         ppAssignmentExpression hasIn ee
   _ -> ppLogicalORExpression hasIn e
 
 -- 11.13
 ppAssignmentExpression :: Bool -> Expression a -> Doc
 ppAssignmentExpression hasIn e = case e of
-  AssignExpr _ op l r -> prettyPrint l <+> prettyPrint op <+> 
+  AssignExpr _ op l r -> prettyPrint l </> prettyPrint op </>
                          ppAssignmentExpression hasIn r
   _ -> ppConditionalExpression hasIn e
-  
+
 -- 11.14
 ppExpression :: Bool -> Expression a -> Doc
 ppExpression hasIn e = case e of
-  ListExpr _ es -> cat $ punctuate comma (map (ppExpression hasIn) es)
+  ListExpr _ es -> parenList (ppExpression hasIn) es
   _ -> ppAssignmentExpression hasIn e
 
 maybe :: Maybe a -> (a -> Doc) -> Doc
 maybe Nothing  _ = empty
 maybe (Just a) f = f a
-
