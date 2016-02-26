@@ -35,10 +35,13 @@ quoteCommon :: Data a => Parser String a -> String -> TH.ExpQ
 quoteCommon p s = do loc <- TH.location
                      let fname = TH.loc_filename loc
                      let (line, col)  = TH.loc_start loc
-                     let p2 = (getPosition >>= \pos ->
-                                setPosition $ (flip setSourceName) fname $
-                                (flip setSourceLine) line $
-                                (flip setSourceColumn) col $ pos) >> p
+                     let p2 = do pos <- getPosition
+                                 setPosition $ (flip setSourceName) fname $
+                                   (flip setSourceLine) line $
+                                   (flip setSourceColumn) col $ pos
+                                 r <- p
+                                 eof
+                                 return r
                      case parse p2 "" s of
                        Left err -> do TH.report True $ show err
                                       return $ TH.UnboxedTupE []
