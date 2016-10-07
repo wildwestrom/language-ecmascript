@@ -1,4 +1,7 @@
 Version change log.
+=0.17.1.0=
+Improvements to pretty-printing (Github PR #78) + fixed a bug in quasi-quotation (Github PR #77).
+
 =0.17.0.2=
 Fixed a bug in the Arbitrary instance: no longer generating empty list expressions. Dependency bounds update.
 
