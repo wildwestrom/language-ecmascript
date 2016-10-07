@@ -13,6 +13,7 @@ module Language.ECMAScript3.Lexer(lexeme,identifier,reserved,operator,reservedOp
                                  ,hexIntLit,decIntLit, decDigits, decDigitsOpt, exponentPart, decLit) where
 
 import Prelude hiding (lex)
+import Data.Char
 import Text.Parsec
 import qualified Text.Parsec.Token as T
 import Language.ECMAScript3.Parser.State
@@ -21,8 +22,14 @@ import Control.Monad.Identity
 import Control.Applicative ((<$>), (<*>))
 import Data.Maybe (isNothing)
 
+jsLetter :: (Stream s m Char) => ParsecT s u m Char
+jsLetter = satisfy (\x ->  isAlpha x && x < '\65536') <?> "letter"
+
+jsAlphaNum :: (Stream s m Char => ParsecT s u m Char)
+jsAlphaNum = satisfy  (\x -> isAlphaNum x && x < '\65536') <?> "letter or digit"
+
 identifierStart :: Stream s Identity Char => Parser s Char
-identifierStart = letter <|> oneOf "$_"
+identifierStart = jsLetter <|> oneOf "$_"
 
 javascriptDef :: Stream s Identity Char =>T.GenLanguageDef s ParserState Identity
 javascriptDef =
@@ -31,7 +38,7 @@ javascriptDef =
                 "//"
                 False -- no nested comments
                 identifierStart
-                (alphaNum <|> oneOf "$_") -- identifier rest
+                (jsAlphaNum <|> oneOf "$_") -- identifier rest
                 (oneOf "{}<>()~.,?:|&^=!+-*/%!") -- operator start
                 (oneOf "=<>|&+") -- operator rest
                 ["break", "case", "catch", "const", "continue", "debugger", 
