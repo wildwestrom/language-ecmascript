@@ -14,6 +14,9 @@ module Language.ECMAScript3.Lexer(lexeme,identifier,reserved,operator,reservedOp
 
 import Prelude hiding (lex)
 import Data.Char
+import Data.Monoid ((<>), mconcat)
+import qualified Data.CharSet                  as Set
+import qualified Data.CharSet.Unicode.Category as Set
 import Text.Parsec
 import qualified Text.Parsec.Token as T
 import Language.ECMAScript3.Parser.State
@@ -22,14 +25,36 @@ import Control.Monad.Identity
 import Control.Applicative ((<$>), (<*>))
 import Data.Maybe (isNothing)
 
-jsLetter :: (Stream s m Char) => ParsecT s u m Char
-jsLetter = satisfy (\x ->  isAlpha x && x < '\65536') <?> "letter"
+identifierStartCharSet :: Set.CharSet
+identifierStartCharSet =
+  (filterBmpChars $ mconcat
+    [ Set.fromDistinctAscList "$_"
+    , Set.lowercaseLetter
+    , Set.uppercaseLetter
+    , Set.titlecaseLetter
+    , Set.modifierLetter
+    , Set.otherLetter
+    , Set.letterNumber
+    ])
 
-jsAlphaNum :: (Stream s m Char => ParsecT s u m Char)
-jsAlphaNum = satisfy  (\x -> isAlphaNum x && x < '\65536') <?> "letter or digit"
+identifierRestCharSet :: Set.CharSet
+identifierRestCharSet =
+  identifierStartCharSet
+    <> (filterBmpChars $ mconcat
+         [ Set.nonSpacingMark
+         , Set.spacingCombiningMark
+         , Set.decimalNumber
+         , Set.connectorPunctuation
+         ])
+
+filterBmpChars :: Set.CharSet -> Set.CharSet
+filterBmpChars = Set.filter (< '\65536')
 
 identifierStart :: Stream s Identity Char => Parser s Char
-identifierStart = jsLetter <|> oneOf "$_"
+identifierStart = satisfy (flip Set.member identifierStartCharSet) <?> "letter, '$', '_'"
+
+identifierRest :: Stream s Identity Char => Parser s Char
+identifierRest = satisfy (flip Set.member identifierRestCharSet) <?> "letter, digits, '$', '_' ..."
 
 javascriptDef :: Stream s Identity Char =>T.GenLanguageDef s ParserState Identity
 javascriptDef =
@@ -38,7 +63,7 @@ javascriptDef =
                 "//"
                 False -- no nested comments
                 identifierStart
-                (jsAlphaNum <|> oneOf "$_") -- identifier rest
+                identifierRest
                 (oneOf "{}<>()~.,?:|&^=!+-*/%!") -- operator start
                 (oneOf "=<>|&+") -- operator rest
                 ["break", "case", "catch", "const", "continue", "debugger", 
