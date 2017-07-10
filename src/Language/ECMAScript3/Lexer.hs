@@ -27,7 +27,7 @@ import Data.Maybe (isNothing)
 
 identifierStartCharSet :: Set.CharSet
 identifierStartCharSet =
-  (filterBmpChars $ mconcat
+  mconcat
     [ Set.fromDistinctAscList "$_"
     , Set.lowercaseLetter
     , Set.uppercaseLetter
@@ -35,20 +35,17 @@ identifierStartCharSet =
     , Set.modifierLetter
     , Set.otherLetter
     , Set.letterNumber
-    ])
+    ]
 
 identifierRestCharSet :: Set.CharSet
 identifierRestCharSet =
   identifierStartCharSet
-    <> (filterBmpChars $ mconcat
+    <> mconcat
          [ Set.nonSpacingMark
          , Set.spacingCombiningMark
          , Set.decimalNumber
          , Set.connectorPunctuation
-         ])
-
-filterBmpChars :: Set.CharSet -> Set.CharSet
-filterBmpChars = Set.filter (< '\65536')
+         ]
 
 identifierStart :: Stream s Identity Char => Parser s Char
 identifierStart = satisfy (flip Set.member identifierStartCharSet) <?> "letter, '$', '_'"
