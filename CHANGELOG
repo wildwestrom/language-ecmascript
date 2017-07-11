@@ -1,4 +1,10 @@
 Version change log.
+
+=0.17.2.0=
+Issue #82: Tighter lexing of identifiers using Unicode character classes (thanks @berdario).
+
+Dependency version bumps.
+
 =0.17.1.0=
 Improvements to pretty-printing (Github PR #78) + fixed a bug in quasi-quotation (Github PR #77).
 
