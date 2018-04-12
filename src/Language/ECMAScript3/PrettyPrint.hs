@@ -10,8 +10,8 @@ module Language.ECMAScript3.PrettyPrint (Pretty (..)
                                         ,unsafeInExprStmt
                                         ) where
 
-import qualified Text.PrettyPrint.Leijen as Pretty
-import Text.PrettyPrint.Leijen hiding (Pretty, parens)
+import qualified Text.PrettyPrint.ANSI.Leijen as Pretty
+import Text.PrettyPrint.ANSI.Leijen hiding (Pretty, parens)
 import Language.ECMAScript3.Syntax
 import Prelude hiding (maybe, id)
 import qualified Prelude
