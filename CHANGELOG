@@ -1,4 +1,6 @@
 Version change log.
+=0.18=
+Pull request #83: Updated dependencies, migrated to ansi-wl-pprint.
 
 =0.17.2.0=
 Issue #82: Tighter lexing of identifiers using Unicode character classes (thanks @berdario).

@@ -29,7 +29,7 @@ Source-repository head
 Source-repository this
    type: git
    location: git://github.com/jswebtools/language-ecmascript.git
-   tag: 0.17.2.0
+   tag: 0.18
 
 Library
   Hs-Source-Dirs:
