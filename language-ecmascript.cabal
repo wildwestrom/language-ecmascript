@@ -1,8 +1,8 @@
 Name:           language-ecmascript
-Version:        0.18
+Version:        0.19
 Cabal-Version:	>= 1.10.0.1
 Copyright:      (c) 2007-2012 Brown University, (c) 2008-2010 Claudiu Saftoiu,
-                (c) 2012-2015 Stevens Institute of Technology, (c) 2016 Eyal Lotem, (c) 2016-2017 Andrey Chudnov
+                (c) 2012-2015 Stevens Institute of Technology, (c) 2016 Eyal Lotem, (c) 2016-2018 Andrey Chudnov
 License:        BSD3
 License-file:   LICENSE
 Author:         Andrey Chudnov, Arjun Guha, Spiridon Aristides Eliopoulos,
@@ -11,7 +11,7 @@ Maintainer:     Andrey Chudnov <oss@chudnov.com>
 Homepage:       http://github.com/jswebtools/language-ecmascript
 Bug-reports:    http://github.com/jswebtools/language-ecmascript/issues
 Stability:      experimental
-Tested-with:    GHC==7.4.2, GHC==7.6.3, GHC==7.8.4, GHC==7.10.3, GHC==8.0.2
+Tested-with:    GHC==8.2.2
 Extra-Source-Files: test/parse-pretty/*.js, test/diff/left/*.js, test/diff/right/*.js, test/diff/expects/*.diff, CHANGELOG
 Category:       Language
 Build-Type:     Simple
@@ -29,7 +29,7 @@ Source-repository head
 Source-repository this
    type: git
    location: git://github.com/jswebtools/language-ecmascript.git
-   tag: 0.18
+   tag: 0.19
 
 Library
   Hs-Source-Dirs:

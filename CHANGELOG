@@ -1,4 +1,8 @@
 Version change log.
+
+=0.19=
+Pull request #84: Moved the Arbitrary instance and the testing-feat dependency to the test-suite. Removed tabs from the lexer.
+
 =0.18=
 Pull request #83: Updated dependencies, migrated to ansi-wl-pprint.
 
