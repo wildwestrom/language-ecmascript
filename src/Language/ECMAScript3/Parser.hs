@@ -42,6 +42,7 @@ import Control.Monad.Identity
 import Data.Maybe (isJust, isNothing, fromMaybe)
 import Control.Monad.Error.Class
 import Control.Applicative ((<$>), (<*>))
+import Control.Exception (throwIO)
 
 {-# DEPRECATED ParsedStatement, ParsedExpression, StatementParser,
                ExpressionParser
@@ -794,7 +795,7 @@ parseJavaScriptFromFile :: MonadIO m => String -- ^ file name
 parseJavaScriptFromFile filename = do
   chars <- liftIO $ readFile filename
   case parse parseScript filename chars of
-    Left err               -> fail (show err)
+    Left err               -> liftIO $ throwIO $ userError $ show err
     Right (Script _ stmts) -> return stmts
 
 -- | Parse a JavaScript program from a string
