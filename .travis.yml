@@ -13,9 +13,5 @@ matrix:
     - env: GHCVER=ghc8101
     - env: GHCVER=ghcHEAD
 
-before_install:
- - nix-channel --list
- - nix-channel --update
-
 script:
- - nix-build --argstr compiler $GHCVER
+ - nix-build --argstr compiler $GHCVER -j1

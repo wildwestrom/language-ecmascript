@@ -10,7 +10,7 @@ let
     self: super: {
       network = dontCheck (super.network);
       network_3_1_1_1 = dontCheck (super.network_3_1_1_1);
-      Diff = super.Diff_0_4_0;
+      Diff = self.Diff_0_4_0;
     };
   ghc = pkgs.haskell.packages.${compiler}.override { inherit overrides; };
   language-ecmascript = ghc.callCabal2nix "language-ecmascript" ./. {};
