@@ -14,4 +14,4 @@ matrix:
     - env: GHCVER=ghcHEAD
 
 script:
- - nix-build --argstr compiler $GHCVER -j1
+ - nix-build -A language-ecmascript --argstr compiler $GHCVER
