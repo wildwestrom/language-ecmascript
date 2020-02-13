@@ -12,13 +12,13 @@ in
 { pkgs ? import (builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/${rev}.tar.gz";
     inherit sha256;
-  }) { overlays = [ haskellOverlay ]; }
+  }) { overlays = [ ]; }
 , compiler ? "ghc881"
 }:
 let
   overrides = with pkgs.haskell.lib;
     self: super: {
-      Diff = self.Diff_0_4_0;
+      # Diff = self.Diff_0_4_0;
     };
   ghc = pkgs.haskell.packages.${compiler}.override { inherit overrides; };
   language-ecmascript = ghc.callCabal2nix "language-ecmascript" ./. {};
