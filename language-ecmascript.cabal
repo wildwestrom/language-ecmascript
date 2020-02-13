@@ -72,14 +72,14 @@ Test-Suite test
   Type: exitcode-stdio-1.0
   Main-Is: TestMain.hs
   Other-Modules:
-    Language.ECMAScript3.Lexer                                        
-    Language.ECMAScript3.Parser                                       
-    Language.ECMAScript3.Parser.State                                 
-    Language.ECMAScript3.Parser.Type                                  
-    Language.ECMAScript3.PrettyPrint                                  
-    Language.ECMAScript3.SourceDiff                                   
-    Language.ECMAScript3.Syntax                                       
-    Language.ECMAScript3.Syntax.Annotations  
+    Language.ECMAScript3.Lexer
+    Language.ECMAScript3.Parser
+    Language.ECMAScript3.Parser.State
+    Language.ECMAScript3.Parser.Type
+    Language.ECMAScript3.PrettyPrint
+    Language.ECMAScript3.SourceDiff
+    Language.ECMAScript3.Syntax
+    Language.ECMAScript3.Syntax.Annotations
     Language.ECMAScript3.Syntax.Arbitrary
     Test.Diff
     Test.Unit
