@@ -18,7 +18,7 @@ in
 let
   overrides = with pkgs.haskell.lib;
     self: super: {
-      # Diff = self.Diff_0_4_0;
+      Diff = self.Diff_0_4_0;
     };
   ghc = pkgs.haskell.packages.${compiler}.override { inherit overrides; };
   language-ecmascript = ghc.callCabal2nix "language-ecmascript" ./. {};
