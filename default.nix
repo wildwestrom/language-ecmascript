@@ -10,7 +10,9 @@ let
   ghc = pkgs.haskell.packages.${compiler}.override { inherit overrides; };
   language-ecmascript = ghc.callCabal2nix "language-ecmascript" ./. {};
 in
+with pkgs.haskell.lib;
 {
   inherit language-ecmascript;
   inherit pkgs;
+  release = sdistTarball language-ecmascript;
 }
