@@ -24,21 +24,23 @@ import Test.Feat.Enumerate
 import Test.Feat.Modifiers
 import Control.Arrow
 
-deriveEnumerable ''AssignOp
-deriveEnumerable ''InfixOp
-deriveEnumerable ''UnaryAssignOp
-deriveEnumerable ''PrefixOp
-deriveEnumerable ''Id
-deriveEnumerable ''CaseClause
-deriveEnumerable ''CatchClause
-deriveEnumerable ''Prop
-deriveEnumerable ''LValue
-deriveEnumerable ''ForInit
-deriveEnumerable ''ForInInit
-deriveEnumerable ''VarDecl
-deriveEnumerable ''Expression
-deriveEnumerable ''Statement
-deriveEnumerable ''JavaScript
+fmap concat $ traverse deriveEnumerable 
+  [ ''AssignOp
+  , ''InfixOp
+  , ''UnaryAssignOp
+  , ''PrefixOp
+  , ''Id
+  , ''CaseClause
+  , ''CatchClause
+  , ''Prop
+  , ''LValue
+  , ''ForInit
+  , ''ForInInit
+  , ''VarDecl
+  , ''Expression
+  , ''Statement
+  , ''JavaScript
+  ]
 
 
 instance Arbitrary (AssignOp) where

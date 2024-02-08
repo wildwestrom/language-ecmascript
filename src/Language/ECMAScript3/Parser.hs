@@ -780,12 +780,12 @@ parseFromString = parse program ""
 -- | A convenience function that takes a filename and tries to parse
 -- the file contents an ECMAScript program, it fails with an error
 -- message if it can't.
-parseFromFile :: (Error e, MonadIO m, MonadError e m) => String -- ^ file name
+parseFromFile :: (MonadIO m, MonadError String m) => String -- ^ file name
                 -> m (JavaScript SourcePos)
 parseFromFile fname =
   liftIO (readFile fname) >>= \source ->
   case parse program fname source of
-    Left err -> throwError $ strMsg $ show err
+    Left err -> throwError $ show err
     Right js -> return js
 
 -- | Read a JavaScript program from file an parse it into a list of

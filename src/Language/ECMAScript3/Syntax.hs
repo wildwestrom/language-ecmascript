@@ -46,6 +46,7 @@ import Data.Traversable (Traversable)
 import Data.Default.Class
 import Data.Generics.Uniplate.Data
 import Data.Char
+import Control.Monad
 import Control.Monad.State
 import Control.Arrow
 
